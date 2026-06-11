@@ -1,0 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Glassmorphism scrollbar overrides for dark environment theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.25);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.45);
+}
+
+body {
+  background-color: #F8FAFC;
+  color: #0F172A;
+  overflow-x: hidden;
+}
+
+/* Professional Polish global customization overlay applied selectively */
+.theme-polished {
+  background-color: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+/* Replaces all dark containers (black background shadows, slate grids, dark dashboard metrics) with stunning light cards */
+.theme-polished .bg-slate-900,
+.theme-polished .bg-slate-900\/40,
+.theme-polished .bg-slate-900\/20,
+.theme-polished .bg-slate-950\/40,
+.theme-polished .bg-slate-950\/80,
+.theme-polished .bg-slate-950\/50,
+.theme-polished .bg-slate-950\/30,
+.theme-polished .bg-slate-950,
+.theme-polished .bg-slate-900\/50,
+.theme-polished .bg-slate-900\/60,
+.theme-polished .bg-white\/\[0\.02\],
+.theme-polished .bg-white\/\[0\.05\],
+.theme-polished .bg-emerald-500\/5,
+.theme-polished .bg-blue-500\/5,
+.theme-polished [class*="bg-slate-900"],
+.theme-polished [class*="bg-slate-950"]:not(#navigation-sidebar):not(#navigation-sidebar *) {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.05) !important;
+}
+
+/* Overriding white text values so they gain excellent slate high contrast text formatting */
+.theme-polished .text-white:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-100:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-200:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-300:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-350:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished [class*="text-slate-100"]:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished [class*="text-slate-200"]:not(#navigation-sidebar *, :is(#navigation-sidebar *)) {
+  color: #0f172a !important;
+}
+
+/* Overriding slate gray supportive metrics/titles */
+.theme-polished .text-slate-400:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-450:not(#navigation-sidebar *, :is(#navigation-sidebar *)),
+.theme-polished .text-slate-500:not(#navigation-sidebar *, :is(#navigation-sidebar *)) {
+  color: #475569 !important;
+}
+
+/* Accent badges mappings to light professional high-contrast themes */
+.theme-polished .bg-emerald-500\/10 {
+  background-color: #ecfdf5 !important;
+  color: #047857 !important;
+  border-color: #a7f3d0 !important;
+}
+.theme-polished .text-emerald-450,
+.theme-polished .text-emerald-400 {
+  color: #059669 !important;
+}
+
+/* Red / Expiry warnings theme */
+.theme-polished .bg-red-500\/20, 
+.theme-polished .bg-red-500\/10 {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+.theme-polished .text-red-400 {
+  color: #dc2626 !important;
+}
+
+/* Yellow / Warning alerts theme */
+.theme-polished .bg-yellow-500\/20, 
+.theme-polished .bg-yellow-500\/10 {
+  background-color: #fef9c3 !important;
+  color: #a16207 !important;
+  border-color: #fef08a !important;
+}
+.theme-polished .text-yellow-400 {
+  color: #ca8a04 !important;
+}
+
+/* Orange badges theme */
+.theme-polished .bg-orange-500\/20 {
+  background-color: #fff7ed !important;
+  color: #c2410c !important;
+  border-color: #fed7aa !important;
+}
+.theme-polished .text-orange-400 {
+  color: #ea580c !important;
+}
+
+/* Blue indicators info theme */
+.theme-polished .bg-blue-500\/10, 
+.theme-polished .bg-blue-500\/5 {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+.theme-polished .text-blue-400 {
+  color: #2563eb !important;
+}
+
+/* Inputs, dropdown listings, and area select panels custom mappings */
+.theme-polished input,
+.theme-polished select,
+.theme-polished textarea {
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  border-radius: 0.5rem !important;
+}
+.theme-polished input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Custom layout grid columns border structure map */
+.theme-polished .border-white\/5,
+.theme-polished .border-slate-800,
+.theme-polished .border-white\/10 {
+  border-color: #e2e8f0 !important;
+}
+
+/* Text selections & code highlights */
+.theme-polished .font-mono {
+  color: #334155 !important;
+}
+
+/* Charts grid strokes */
+.theme-polished .recharts-cartesian-grid-horizontal line, 
+.theme-polished .recharts-cartesian-grid-vertical line { 
+  stroke: #e2e8f0 !important; 
+}
+
+/* Interactive hover rows and quick dispense buttons hover style mappings */
+.theme-polished button:not([disabled]):hover:not(#navigation-sidebar button) {
+  background-color: #f1f5f9 !important;
+}
+.theme-polished tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* --- Navigation Sidebar Solid Colors Overrides --- */
+#navigation-sidebar {
+  background-color: #0F172A !important;
+  border-right: 1px solid #1e293b !important;
+}
+#navigation-sidebar button {
+  border-radius: 0.5rem !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: #94a3b8 !important;
+}
+#navigation-sidebar button.bg-slate-900 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+  color: #34d399 !important;
+}
+#navigation-sidebar button:not(.bg-slate-900):hover {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+}
+#navigation-sidebar span.bg-emerald-500\/10 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+  color: #34d399 !important;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Pharmacy ERP SaaS Platform",
+  "description": "Enterprise-grade Pharmacy ERP & SaaS with AI-powered analytics, multi-branch, POS, smart prescriptions, and voice assistant.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
