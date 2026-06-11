@@ -70,20 +70,21 @@ export default function ReportingCenterView({
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // ADVANCED SUB-REPORTS & DETAILED FILTERS
-  const [subReportProfile, setSubReportProfile] = useState<string>("ledger");
+  const [subReportProfile, setSubReportProfile] = useState<string>("transaction-details");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCashier, setFilterCashier] = useState("all");
   const [filterMedicineName, setFilterMedicineName] = useState("all");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
   const [filterSupplier, setFilterSupplier] = useState("all");
+  const [filterStore, setFilterStore] = useState("all");
   const [filterMinProfit, setFilterMinProfit] = useState("all");
   const [sortField, setSortField] = useState<string>("sn");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   useEffect(() => {
-    if (reportType === "sales") setSubReportProfile("ledger");
+    if (reportType === "sales") setSubReportProfile("transaction-details");
     else if (reportType === "inventory") setSubReportProfile("valuation");
     else if (reportType === "finance") setSubReportProfile("finance-ledger");
     else if (reportType === "staff") setSubReportProfile("staff-ledger");
@@ -187,6 +188,10 @@ export default function ReportingCenterView({
     return Array.from(new Set(medicines.map(m => m.manufacturer).filter(Boolean)));
   }, [medicines]);
 
+  const uniqueStores = useMemo(() => {
+    return Array.from(new Set(medicines.map(m => m.storeLocation).filter(Boolean)));
+  }, [medicines]);
+
   // ==================== FILTERING LOGIC ====================
   // Helper: check if a date is between From and To
   const isWithinDateRange = (dateStr: string) => {
@@ -243,18 +248,16 @@ export default function ReportingCenterView({
   // Filtered flattened sales
   const filteredSalesTransactionsFiltered = useMemo(() => {
     return flattenedSalesTransactions.filter(item => {
-      // Basic Filters
       const matchBranch = filterBranchId === "all" || item.branchId === filterBranchId;
       const matchDate = isWithinDateRange(item.date);
       const matchCategory = selectedCategory === "all" || item.category === selectedCategory;
 
-      // Advanced Filters
       const matchCashier = filterCashier === "all" || item.cashierName === filterCashier;
       const matchMedicine = filterMedicineName === "all" || item.medicineName === filterMedicineName;
       const matchPayMethod = filterPaymentMethod === "all" || item.paymentMethod === filterPaymentMethod;
       const matchSupplier = filterSupplier === "all" || item.supplier === filterSupplier;
+      const matchStore = filterStore === "all" || true;
 
-      // Search Query
       const matchSearch = !searchQuery ? true : (
         item.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.medicineName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -264,16 +267,15 @@ export default function ReportingCenterView({
         item.supplier.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
-      // Minimum Profit Constraint (flagger)
       let matchMinProfit = true;
       if (filterMinProfit !== "all") {
         const threshold = parseFloat(filterMinProfit);
         matchMinProfit = item.profit < threshold;
       }
 
-      return matchBranch && matchDate && matchCategory && matchCashier && matchMedicine && matchPayMethod && matchSupplier && matchSearch && matchMinProfit;
+      return matchBranch && matchDate && matchCategory && matchCashier && matchMedicine && matchPayMethod && matchSupplier && matchStore && matchSearch && matchMinProfit;
     });
-  }, [flattenedSalesTransactions, filterBranchId, dateFrom, dateTo, selectedCategory, filterCashier, filterMedicineName, filterPaymentMethod, filterSupplier, searchQuery, filterMinProfit]);
+  }, [flattenedSalesTransactions, filterBranchId, dateFrom, dateTo, selectedCategory, filterCashier, filterMedicineName, filterPaymentMethod, filterSupplier, filterStore, searchQuery, filterMinProfit]);
 
   // Filtered Sales Report Data (Original single-order array maintained for backwards compat)
   const filteredSalesData = useMemo(() => {
@@ -640,6 +642,50 @@ export default function ReportingCenterView({
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredSalesData]);
 
+  const topMedicinesChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      const key = tx.medicineName;
+      map[key] = (map[key] || 0) + tx.quantity;
+    });
+    return Object.entries(map)
+      .map(([name, quantity]) => ({ name, quantity }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 8);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const categoryChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      const key = tx.category;
+      map[key] = (map[key] || 0) + tx.balanceAfterDiscount;
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const branchChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      const bName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
+      map[bName] = (map[bName] || 0) + tx.balanceAfterDiscount;
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredSalesTransactionsFiltered, branches]);
+
+  const paymentMethodChartData = useMemo(() => {
+    const map: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      map[tx.paymentMethod] = (map[tx.paymentMethod] || 0) + tx.balanceAfterDiscount;
+    });
+    return Object.entries(map)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredSalesTransactionsFiltered]);
+
   const inventoryCategoryChartData = useMemo(() => {
     const categoriesSum: { [cat: string]: number } = {};
     filteredInventoryData.forEach(m => {
@@ -727,6 +773,7 @@ export default function ReportingCenterView({
   // 1. Get raw current dataset
   const currentRawDataList = useMemo(() => {
     switch (subReportProfile) {
+      case "transaction-details":
       case "ledger":
         return filteredSalesTransactionsFiltered;
       case "top-selling":
@@ -747,6 +794,8 @@ export default function ReportingCenterView({
         return supplierPurchaseReportData;
       case "customer-purchase":
         return customerPurchaseReportData;
+      case "profit-margin":
+        return profitMarginReportData;
       default:
         return [];
     }
@@ -761,7 +810,8 @@ export default function ReportingCenterView({
     cashierPerformanceReportData,
     branchPerformanceReportData,
     supplierPurchaseReportData,
-    customerPurchaseReportData
+    customerPurchaseReportData,
+    profitMarginReportData
   ]);
 
   // 2. Sort current raw dataset (with full-strength dynamic type casting)
@@ -834,8 +884,8 @@ export default function ReportingCenterView({
     csvContent += `"Date Range","${dateFrom} to ${dateTo}"\r\n`;
     csvContent += `"Exported Timestamp","${new Date().toLocaleString()}"\r\n\r\n`;
 
-    if (subReportProfile === "ledger") {
-      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount Allocated (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date,Branch\r\n";
+    if (subReportProfile === "transaction-details" || subReportProfile === "ledger") {
+      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date & Time,Branch Name\r\n";
       let totalQty = 0;
       let totalCost = 0;
       let totalSell = 0;
@@ -852,12 +902,11 @@ export default function ReportingCenterView({
         totalProfit += tx.profit;
 
         const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${tx.date.split("T")[0]}","${branchName}"`;
+        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${new Date(tx.date).toLocaleString()}","${branchName}"`;
         csvContent += line + "\r\n";
       });
 
-      // Add Grand Totals row
-      csvContent += `\r\n"GRAND TOTALS",,-,-,${totalQty},-,${totalCost},-,${totalSell},${totalDiscount},${totalNett},${totalProfit},-,-,-,-\r\n`;
+      csvContent += `\r\n"TOTALS",,,,,,,${totalQty},,,,,,${totalCost},${totalSell},${totalDiscount},${totalNett},${totalProfit}\r\n`;
     
     } else if (subReportProfile === "top-selling") {
       csvContent += "S/N,Medicine Name,Category,Total Quantity Sold,Total Net Revenue (NGN),Total Discounts (NGN),Profit Generated (NGN),Supplier\r\n";
@@ -1359,9 +1408,8 @@ export default function ReportingCenterView({
               </span>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
               
-              {/* Report Model Selection */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Report Type</label>
                 <select
@@ -1376,65 +1424,36 @@ export default function ReportingCenterView({
                 </select>
               </div>
 
-              {/* Branch Constraint */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Target Branch</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Sub-Report View</label>
                 <select
-                  value={filterBranchId}
-                  onChange={(e) => setFilterBranchId(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  value={subReportProfile}
+                  onChange={(e) => setSubReportProfile(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
                 >
-                  <option value="all">🌐 All Area Branches (Combined)</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.location.split(",")[0]})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Date From */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date Initiated (From)</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                />
-              </div>
-
-              {/* Date To */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date Completed (To)</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                />
-              </div>
-
-              {/* Category selector */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Category / Type Code</label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                >
-                  <option value="all">🔍 Show All Categories</option>
-                  {reportType === "inventory" ? (
-                    uniqueCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))
-                  ) : reportType === "finance" ? (
+                  {reportType === "sales" && (
                     <>
-                      <option value="Sales Revenue">Sales Revenue</option>
-                      <option value="Salary">Salary</option>
-                      <option value="Rent">Rent</option>
-                      <option value="Utilities">Utilities</option>
+                      <option value="transaction-details">📋 Transaction Details (Full Ledger)</option>
+                      <option value="top-selling">🏆 Top Selling Medicines</option>
+                      <option value="slow-moving">🐢 Slow Moving Medicines</option>
+                      <option value="dead-stock">💀 Dead Stock Report</option>
+                      <option value="low-stock">⚠️ Low Stock Report</option>
+                      <option value="expiry">⏰ Expiry Report</option>
+                      <option value="profit-margin">💰 Profit Margin Report</option>
+                      <option value="cashier-perf">👤 Cashier Performance</option>
+                      <option value="branch-perf">🏢 Branch Performance</option>
+                      <option value="supplier-purchase">🚚 Supplier Purchase Report</option>
+                      <option value="customer-purchase">👥 Customer Purchase Report</option>
                     </>
-                  ) : (
-                    <option value="all">Not applicable for selection</option>
+                  )}
+                  {reportType === "inventory" && (
+                    <option value="valuation">📦 Inventory Valuation</option>
+                  )}
+                  {reportType === "finance" && (
+                    <option value="finance-ledger">💸 Finance Ledger</option>
+                  )}
+                  {reportType === "staff" && (
+                    <option value="staff-ledger">👥 Staff Performance Ledger</option>
                   )}
                 </select>
               </div>
@@ -1442,43 +1461,38 @@ export default function ReportingCenterView({
             </div>
           </div>
 
-          {/* ==================== SUB REVENUE KPIS (SALES REPORT) ==================== */}
-          {reportType === "sales" && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Gross Sales Revenue</p>
-                <p className="text-xl font-extrabold text-slate-900 mt-1">₦{salesSummaryKPIs.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                <div className="flex items-center gap-1 text-[10px] text-emerald-600 mt-1.5 font-bold">
-                  <ArrowUpRight size={12} />
-                  <span>Filtered data range</span>
-                </div>
+          {/* ==================== ANALYTICS CARDS - TRANSACTION DETAILS ==================== */}
+          {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-slate-500 uppercase">Total Transactions</p>
+                <p className="text-lg font-extrabold text-slate-900 mt-1">{filteredSalesTransactionsFiltered.length}</p>
+                <p className="text-[9px] text-slate-400 mt-0.5">Line items</p>
               </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Total Orders Registered</p>
-                <p className="text-xl font-extrabold text-slate-900 mt-1">{salesSummaryKPIs.count} Trans.</p>
-                <p className="text-[10px] text-slate-500 mt-1.5">Awaiting compliance clearance</p>
+              <div className="bg-white border border-emerald-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-emerald-600 uppercase">Total Revenue</p>
+                <p className="text-lg font-extrabold text-emerald-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.totalSellingPrice, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                <p className="text-[9px] text-emerald-500 mt-0.5">Gross sales</p>
               </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Average Order Value</p>
-                <p className="text-xl font-extrabold text-slate-900 mt-1">₦{salesSummaryKPIs.avgOrder.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                <p className="text-[10px] text-slate-500 mt-1.5">Basket transaction depth</p>
+              <div className="bg-white border border-blue-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-blue-600 uppercase">Total Profit</p>
+                <p className="text-lg font-extrabold text-blue-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.profit, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                <p className="text-[9px] text-blue-500 mt-0.5">Nett margin</p>
               </div>
-              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <p className="text-[10px] font-bold text-slate-500 uppercase">Cash vs Bank Transfer</p>
-                <div className="mt-1 flex items-center justify-between text-xs font-semibold text-slate-800">
-                  <span>Cash: ₦{salesSummaryKPIs.cashTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
-                </div>
-                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1 flex">
-                  <div 
-                    className="h-full bg-emerald-500" 
-                    style={{ width: `${salesSummaryKPIs.total > 0 ? (salesSummaryKPIs.cashTotal / salesSummaryKPIs.total) * 100 : 0}%` }}
-                  />
-                  <div 
-                    className="h-full bg-blue-500" 
-                    style={{ width: `${salesSummaryKPIs.total > 0 ? (salesSummaryKPIs.transferTotal / salesSummaryKPIs.total) * 100 : 0}%` }}
-                  />
-                </div>
-                <span className="text-[9px] text-slate-400 mt-1 block">Green = Cash | Blue = Transfer</span>
+              <div className="bg-white border border-amber-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-amber-600 uppercase">Qty Sold</p>
+                <p className="text-lg font-extrabold text-amber-700 mt-1">{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.quantity, 0).toLocaleString()}</p>
+                <p className="text-[9px] text-amber-500 mt-0.5">Units dispatched</p>
+              </div>
+              <div className="bg-white border border-rose-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-rose-600 uppercase">Total Discount</p>
+                <p className="text-lg font-extrabold text-rose-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.discount, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                <p className="text-[9px] text-rose-500 mt-0.5">Loyalty waivers</p>
+              </div>
+              <div className="bg-white border border-purple-200 rounded-xl p-3 shadow-sm">
+                <p className="text-[9px] font-bold text-purple-600 uppercase">Avg Sale Value</p>
+                <p className="text-lg font-extrabold text-purple-700 mt-1">₦{filteredSalesTransactionsFiltered.length > 0 ? (filteredSalesTransactionsFiltered.reduce((s, t) => s + t.balanceAfterDiscount, 0) / filteredSalesTransactionsFiltered.length).toLocaleString("en-US", { maximumFractionDigits: 0 }) : 0}</p>
+                <p className="text-[9px] text-purple-500 mt-0.5">Per line item</p>
               </div>
             </div>
           )}
@@ -1578,91 +1592,143 @@ export default function ReportingCenterView({
             </div>
           )}
 
-          {/* ==================== ANALYTICS GRAPH TRENDS ==================== */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Left Graph Panel */}
-            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5">
-                  <TrendingUp size={14} className="text-emerald-500" />
-                  Visual Analytics Trend
+          {/* ==================== ANALYTICS GRAPHS - TRANSACTION DETAILS ==================== */}
+          {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Daily Sales Trend */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
+                  <TrendingUp size={13} className="text-emerald-500" />
+                  Daily Sales Trend
                 </h3>
-                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded-md">REAL-TIME DB</span>
-              </div>
-
-              <div className="h-64 mt-2">
-                {reportType === "sales" && (
-                  salesChartData.length > 0 ? (
+                <div className="h-48">
+                  {salesChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <AreaChart data={salesChartData}>
                         <defs>
-                          <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                          <linearGradient id="dailySalesGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
                             <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="date" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
                         <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Revenue"]} />
-                        <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)" />
+                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Revenue"]} />
+                        <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#dailySalesGrad)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No sales transactions found in this date window.</div>
-                  )
-                )}
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
+                  )}
+                </div>
+              </div>
 
-                {reportType === "inventory" && (
-                  inventoryCategoryChartData.length > 0 ? (
+              {/* Top Selling Medicines */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
+                  🏆 Top Selling Medicines
+                </h3>
+                <div className="h-48">
+                  {topMedicinesChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={inventoryCategoryChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <BarChart data={topMedicinesChartData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis type="number" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
+                        <YAxis dataKey="name" type="category" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" width={120} />
+                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => [`${value} units`, "Quantity Sold"]} />
+                        <Bar dataKey="quantity" fill="#10b981" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top Categories */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
+                  🏷️ Top Categories
+                </h3>
+                <div className="h-48">
+                  {categoryChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryChartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={80}
+                          paddingAngle={2}
+                          dataKey="value"
+                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                          labelLine={false}
+                        >
+                          {categoryChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Branch Sales Performance */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
+                  <Building size={13} className="text-emerald-500" />
+                  Branch Sales Performance
+                </h3>
+                <div className="h-48">
+                  {branchChartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={branchChartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
                         <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Valuation"]} />
+                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
                         <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No inventory products match criteria.</div>
-                  )
-                )}
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
+                  )}
+                </div>
+              </div>
 
-                {reportType === "finance" && (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={financeSummaryChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="name" stroke="#94a3b8" tickStyle={{ fontSize: 10 }} />
-                      <YAxis stroke="#94a3b8" tickStyle={{ fontSize: 10 }} />
-                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Sum Amount"]} />
-                      <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]}>
-                        {financeSummaryChartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-
-                {reportType === "staff" && (
-                  calculatedStaffData.length > 0 ? (
+              {/* Payment Method Distribution */}
+              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-2">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
+                  💳 Payment Method Distribution
+                </h3>
+                <div className="h-48">
+                  {paymentMethodChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={calculatedStaffData.map(s => ({ name: s.name.split(" ")[1] || s.name, sales: s.totalSalesValue }))} layout="vertical" margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis type="number" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
-                        <YAxis dataKey="name" type="category" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
-                        <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Sales Managed"]} />
-                        <Bar dataKey="sales" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      <BarChart data={paymentMethodChartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" tickStyle={{ fontSize: 10 }} stroke="#94a3b8" />
+                        <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
+                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
+                        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                          {paymentMethodChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No staff performance stats.</div>
-                  )
-                )}
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
+                  )}
+                </div>
               </div>
             </div>
+          )}
 
             {/* Right Export and Controls Panel */}
             <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
@@ -1731,49 +1797,86 @@ export default function ReportingCenterView({
 
             <div className="overflow-x-auto min-h-[250px]">
               
-              {reportType === "sales" && (
+            {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (
+              <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                      <th className="px-5 py-3">Invoice #</th>
-                      <th className="px-5 py-3">Date</th>
-                      <th className="px-5 py-3">Customer</th>
-                      <th className="px-5 py-3">Direct items</th>
-                      <th className="px-5 py-3">Subtotal</th>
-                      <th className="px-5 py-3">Discount</th>
-                      <th className="px-5 py-3">Tax</th>
-                      <th className="px-5 py-3">Grand Total</th>
-                      <th className="px-5 py-3">Payment Method</th>
-                      <th className="px-5 py-3">Cashier Session</th>
+                  <thead className="sticky top-0 z-10">
+                    <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b-2 border-slate-300">
+                      <th className="px-3 py-3 w-12">{renderSortableHeader("sn", "S/N")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("invoiceNumber", "Invoice #")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("medicineName", "Medicine Name")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("category", "Category")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("quantity", "Qty")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("unitCostPrice", "Unit Cost Price")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("totalCostPrice", "Total Cost")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("unitSellingPrice", "Unit Sell Price")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("totalSellingPrice", "Total Sell")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("discount", "Discount")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("balanceAfterDiscount", "Balance")}</th>
+                      <th className="px-3 py-3 text-right">{renderSortableHeader("profit", "Profit")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("paymentMethod", "Payment")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("cashierName", "Cashier")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("date", "Date & Time")}</th>
+                      <th className="px-3 py-3">{renderSortableHeader("branchName", "Branch")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {filteredSalesData.map(s => (
-                      <tr key={s.id} className="hover:bg-slate-50">
-                        <td className="px-5 py-3 font-mono text-slate-400 font-bold">{s.invoiceNumber}</td>
-                        <td className="px-5 py-3">{s.date.split("T")[0]} {s.date.split("T")[1]?.slice(0, 5) || ""}</td>
-                        <td className="px-5 py-3 font-semibold">{s.customerName}</td>
-                        <td className="px-5 py-3 font-mono text-slate-500">{s.items.length} units</td>
-                        <td className="px-5 py-3 font-semibold">₦{s.subtotal.toLocaleString()}</td>
-                        <td className="px-5 py-3 text-rose-600 font-bold">-₦{s.discount.toLocaleString()}</td>
-                        <td className="px-5 py-3 font-medium text-slate-500">₦{s.taxTotal.toLocaleString()}</td>
-                        <td className="px-5 py-3 font-extrabold text-slate-900">₦{s.total.toLocaleString()}</td>
-                        <td className="px-5 py-3">
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full font-bold text-[9px] border border-emerald-100">
-                            {s.paymentMethod}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-slate-500">{s.cashierName}</td>
-                      </tr>
-                    ))}
-                    {filteredSalesData.length === 0 && (
+                    {sortedAndPaginatedData.map((tx: any) => {
+                      const isLowProfit = tx.profit < (tx.balanceAfterDiscount * 0.15);
+                      const isHighValue = tx.balanceAfterDiscount > 20000;
+                      const profitColor = tx.profit > 0 ? "text-emerald-700 font-bold" : "text-rose-700 font-bold";
+                      const rowBgClass = isLowProfit ? "bg-amber-50/50" : (isHighValue ? "bg-blue-50/30" : "hover:bg-slate-50");
+                      const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
+                      return (
+                        <tr key={tx.invoiceNumber + tx.medicineName} className={`${rowBgClass} transition-colors`}>
+                          <td className="px-3 py-2.5 font-mono text-slate-500">{tx.sn}</td>
+                          <td className="px-3 py-2.5 font-mono text-slate-600 font-bold">{tx.invoiceNumber}</td>
+                          <td className="px-3 py-2.5 font-semibold text-slate-800">{tx.medicineName}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold">{tx.category}</span>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold">{tx.quantity}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-600">₦{tx.unitCostPrice.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-600">₦{tx.totalCostPrice.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-800">₦{tx.unitSellingPrice.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-slate-800 font-bold">₦{tx.totalSellingPrice.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-rose-600 font-bold">-₦{tx.discount.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right font-mono text-emerald-700 font-extrabold">₦{tx.balanceAfterDiscount.toLocaleString()}</td>
+                          <td className={`px-3 py-2.5 text-right font-mono ${profitColor}`}>{tx.profit >= 0 ? "+" : ""}₦{tx.profit.toLocaleString()}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                              tx.paymentMethod === "Cash" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                              tx.paymentMethod === "POS" ? "bg-blue-50 text-blue-700 border border-blue-100" :
+                              tx.paymentMethod === "Bank Transfer" ? "bg-amber-50 text-amber-700 border border-amber-100" :
+                              tx.paymentMethod === "Mobile Money" ? "bg-purple-50 text-purple-700 border border-purple-100" :
+                              "bg-rose-50 text-rose-700 border border-rose-100"
+                            }`}>
+                              {tx.paymentMethod}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 text-slate-600">{tx.cashierName}</td>
+                          <td className="px-3 py-2.5 text-slate-500 font-mono text-[10px]">
+                            {new Date(tx.date).toLocaleDateString()}<br/>
+                            <span className="text-slate-400">{new Date(tx.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                          </td>
+                          <td className="px-3 py-2.5 font-semibold text-slate-700">{branchName}</td>
+                        </tr>
+                      );
+                    })}
+                    {sortedAndPaginatedData.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="text-center py-12 text-slate-400">No verified sales matching query standard.</td>
+                        <td colSpan={16} className="text-center py-12 text-slate-400">
+                          <div className="flex flex-col items-center gap-2">
+                            <Search size={24} className="text-slate-300" />
+                            <p>No transactions found matching your filters.</p>
+                          </div>
+                        </td>
                       </tr>
                     )}
                   </tbody>
                 </table>
-              )}
+              </div>
+            )}
 
               {reportType === "inventory" && (
                 <table className="w-full text-left border-collapse">
@@ -2725,7 +2828,56 @@ export default function ReportingCenterView({
                                     <span className="text-slate-400 font-extrabold flex items-center gap-1 inline-flex justify-end">
                                       <ToggleLeft size={20} /> Restrict
                                     </span>
-                                  )}
+            )}
+            {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (() => {
+              const totals = filteredSalesTransactionsFiltered.reduce((acc: any, tx: any) => {
+                acc.totalQty += tx.quantity;
+                acc.totalCost += tx.totalCostPrice;
+                acc.totalSell += tx.totalSellingPrice;
+                acc.totalDiscount += tx.discount;
+                acc.totalNett += tx.balanceAfterDiscount;
+                acc.totalProfit += tx.profit;
+                return acc;
+              }, { totalQty: 0, totalCost: 0, totalSell: 0, totalDiscount: 0, totalNett: 0, totalProfit: 0 });
+              return (
+                <div className="bg-slate-50 border-t-2 border-slate-300 p-4 space-y-2">
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL QTY SOLD</span>
+                      <span className="font-extrabold text-slate-900 text-sm">{totals.totalQty.toLocaleString()} units</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL COST VALUE</span>
+                      <span className="font-extrabold text-slate-900 text-sm">₦{totals.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL SELL VALUE</span>
+                      <span className="font-extrabold text-emerald-700 text-sm">₦{totals.totalSell.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL DISCOUNT</span>
+                      <span className="font-extrabold text-rose-600 text-sm">-₦{totals.totalDiscount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL NET SALES</span>
+                      <span className="font-extrabold text-blue-700 text-sm">₦{totals.totalNett.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL PROFIT</span>
+                      <span className={`font-extrabold text-sm ${totals.totalProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                        {totals.totalProfit >= 0 ? "+" : ""}₦{totals.totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1 border-t border-slate-200 pt-2">
+                    Based on {filteredSalesTransactionsFiltered.length} medicine line items from {new Set(filteredSalesTransactionsFiltered.map((t: any) => t.invoiceNumber)).size} unique invoice(s)
+                    {filterBranchId !== "all" && ` at ${branches.find(b => b.id === filterBranchId)?.name || filterBranchId}`}
+                    {" "} | Period: {dateFrom} to {dateTo}
+                  </div>
+                </div>
+              );
+            })()}
+
                                 </button>
                               </td>
                             </tr>
@@ -3094,9 +3246,165 @@ export default function ReportingCenterView({
                 <option value="Product Catalog">Product Catalog</option>
                 <option value="Finance Entry">Finance Entry</option>
                 <option value="User Management">User Management</option>
-              </select>
+                </select>
+              </div>
+
+              {/* Branch Constraint */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Target Branch</label>
+                <select
+                  value={filterBranchId}
+                  onChange={(e) => setFilterBranchId(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                >
+                  <option value="all">🌐 All Area Branches (Combined)</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.location.split(",")[0]})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date From */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                />
+              </div>
+
+              {/* Date To */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                />
+              </div>
             </div>
-          </div>
+
+            {/* Advanced Filters Row - Only for Transaction Details */}
+            {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 pt-3 border-t border-slate-100">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Cashier</label>
+                  <select
+                    value={filterCashier}
+                    onChange={(e) => setFilterCashier(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Cashiers</option>
+                    {uniqueCashiers.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Medicine</label>
+                  <select
+                    value={filterMedicineName}
+                    onChange={(e) => setFilterMedicineName(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Medicines</option>
+                    {uniqueMedicines.map(m => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Payment Method</label>
+                  <select
+                    value={filterPaymentMethod}
+                    onChange={(e) => setFilterPaymentMethod(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Payment Methods</option>
+                    {uniquePaymentMethods.map(pm => (
+                      <option key={pm} value={pm}>{pm}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Category</label>
+                  <select
+                    value={selectedCategory}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Categories</option>
+                    {uniqueCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Supplier / Manufacturer</label>
+                  <select
+                    value={filterSupplier}
+                    onChange={(e) => setFilterSupplier(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Suppliers</option>
+                    {uniqueSuppliers.map(sup => (
+                      <option key={sup} value={sup}>{sup}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Store / Location</label>
+                  <select
+                    value={filterStore}
+                    onChange={(e) => setFilterStore(e.target.value)}
+                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                  >
+                    <option value="all">All Stores</option>
+                    {uniqueStores.map(store => (
+                      <option key={store} value={store}>{store}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Search Bar */}
+            <div className="flex items-center gap-3 pt-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="🔍 Search by Invoice #, Medicine Name, Cashier, Category, Supplier..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  setFilterBranchId("all");
+                  setFilterCashier("all");
+                  setFilterMedicineName("all");
+                  setFilterPaymentMethod("all");
+                  setFilterSupplier("all");
+                  setFilterStore("all");
+                  setSelectedCategory("all");
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-colors whitespace-nowrap"
+              >
+                Reset Filters
+              </button>
+            </div>
 
           {/* Streams ledger */}
           <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -3287,33 +3595,78 @@ export default function ReportingCenterView({
 
                 <div className="border border-slate-350 rounded overflow-hidden">
                   
-                  {reportType === "sales" && (
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-slate-100 border-b border-slate-350">
-                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                          <th className="px-4 py-2">Invoice #</th>
-                          <th className="px-4 py-2">Date</th>
-                          <th className="px-4 py-2">Customer</th>
-                          <th className="px-4 py-2 text-right">Items</th>
-                          <th className="px-4 py-2 text-right">Discount</th>
-                          <th className="px-4 py-2 text-right">Grand Total</th>
-                          <th className="px-4 py-2 text-center">Receipt Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {filteredSalesData.map(s => (
-                          <tr key={s.id}>
-                            <td className="px-4 py-2 font-mono font-bold text-slate-800">{s.invoiceNumber}</td>
-                            <td className="px-4 py-2">{s.date.split("T")[0]}</td>
-                            <td className="px-4 py-2 font-medium">{s.customerName}</td>
-                            <td className="px-4 py-2 text-right">{s.items.length}</td>
-                            <td className="px-4 py-2 text-right">-₦{s.discount}</td>
-                            <td className="px-4 py-2 text-right font-bold">₦{s.total.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-center text-slate-500 font-bold">{s.paymentMethod}</td>
+                  {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (
+                    <>
+                      <table className="w-full text-left text-[10px]">
+                        <thead className="bg-slate-100 border-b border-slate-350">
+                          <tr className="text-slate-700 font-bold uppercase text-[9px]">
+                            <th className="px-3 py-2">S/N</th>
+                            <th className="px-3 py-2">Invoice #</th>
+                            <th className="px-3 py-2">Medicine Name</th>
+                            <th className="px-3 py-2">Category</th>
+                            <th className="px-3 py-2 text-right">Qty</th>
+                            <th className="px-3 py-2 text-right">Unit Cost</th>
+                            <th className="px-3 py-2 text-right">Tot Cost</th>
+                            <th className="px-3 py-2 text-right">Unit Sell</th>
+                            <th className="px-3 py-2 text-right">Tot Sell</th>
+                            <th className="px-3 py-2 text-right">Discount</th>
+                            <th className="px-3 py-2 text-right">Balance</th>
+                            <th className="px-3 py-2 text-right">Profit</th>
+                            <th className="px-3 py-2">Payment</th>
+                            <th className="px-3 py-2">Cashier</th>
+                            <th className="px-3 py-2">Date & Time</th>
+                            <th className="px-3 py-2">Branch</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {filteredSalesTransactionsFiltered.map((tx, idx) => {
+                            const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
+                            return (
+                              <tr key={idx}>
+                                <td className="px-3 py-2 font-mono text-slate-500">{idx + 1}</td>
+                                <td className="px-3 py-2 font-mono font-bold text-slate-800">{tx.invoiceNumber}</td>
+                                <td className="px-3 py-2 font-semibold text-slate-900">{tx.medicineName}</td>
+                                <td className="px-3 py-2 text-slate-600">{tx.category}</td>
+                                <td className="px-3 py-2 text-right">{tx.quantity}</td>
+                                <td className="px-3 py-2 text-right font-mono">₦{tx.unitCostPrice.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right font-mono">₦{tx.totalCostPrice.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right font-mono">₦{tx.unitSellingPrice.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right font-mono font-bold">₦{tx.totalSellingPrice.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right text-rose-600 font-bold">-₦{tx.discount.toLocaleString()}</td>
+                                <td className="px-3 py-2 text-right font-mono text-emerald-700 font-bold">₦{tx.balanceAfterDiscount.toLocaleString()}</td>
+                                <td className={`px-3 py-2 text-right font-mono font-bold ${tx.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{tx.profit >= 0 ? "+" : ""}₦{tx.profit.toLocaleString()}</td>
+                                <td className="px-3 py-2">{tx.paymentMethod}</td>
+                                <td className="px-3 py-2 text-slate-600">{tx.cashierName}</td>
+                                <td className="px-3 py-2 text-slate-500">{new Date(tx.date).toLocaleString()}</td>
+                                <td className="px-3 py-2 text-slate-600">{branchName}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-slate-100 font-bold text-[10px] border-t-2 border-slate-400">
+                            <td colSpan={4} className="px-3 py-2 text-right text-slate-800 uppercase">GRAND TOTALS</td>
+                            <td className="px-3 py-2 text-right">{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.quantity, 0)}</td>
+                            <td className="px-3 py-2 text-right">-</td>
+                            <td className="px-3 py-2 text-right">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalCostPrice, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">-</td>
+                            <td className="px-3 py-2 text-right">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalSellingPrice, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-rose-600">-₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.discount, 0).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right text-emerald-700">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.balanceAfterDiscount, 0).toLocaleString()}</td>
+                            <td className={`px-3 py-2 text-right ${filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>+₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0).toLocaleString()}</td>
+                            <td colSpan={4} className="px-3 py-2"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded text-[10px] space-y-1">
+                        <p><strong>TOTAL QUANTITY SOLD:</strong> {filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.quantity, 0).toLocaleString()} units</p>
+                        <p><strong>TOTAL COST VALUE:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalCostPrice, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                        <p><strong>TOTAL SELL VALUE:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalSellingPrice, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                        <p><strong>TOTAL DISCOUNT:</strong> -₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.discount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                        <p><strong>TOTAL NET SALES:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.balanceAfterDiscount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                        <p><strong>TOTAL PROFIT:</strong> +₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </>
                   )}
 
                   {reportType === "inventory" && (
