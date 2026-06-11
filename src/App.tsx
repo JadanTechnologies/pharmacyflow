@@ -926,6 +926,7 @@ export default function App() {
                   finances={finances}
                   staff={staff}
                   users={users}
+                  customers={customers}
                   onAddUser={handleAddUser}
                   onToggleUserStatus={handleToggleUserStatus}
                   onDeleteUser={handleDeleteUser}
