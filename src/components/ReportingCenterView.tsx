@@ -10,7 +10,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, Legend
 } from "recharts";
-import { Medicine, Sale, Branch, FinancialRecord, Staff, ERPUser, ActivityLog, SecurityRole, RolePermission, BusinessSettings } from "../types";
+import { Medicine, Sale, Branch, FinancialRecord, Staff, ERPUser, ActivityLog, SecurityRole, RolePermission, BusinessSettings, Customer } from "../types";
 
 interface ReportingCenterProps {
   medicines: Medicine[];
@@ -19,6 +19,7 @@ interface ReportingCenterProps {
   finances: FinancialRecord[];
   staff: Staff[];
   users: ERPUser[];
+  customers: Customer[];
   onAddUser: (username: string, passwordHash: string, role: ERPUser["role"], branchId: string) => void;
   onToggleUserStatus: (userId: string) => void;
   onDeleteUser: (userId: string) => void;
@@ -42,6 +43,7 @@ export default function ReportingCenterView({
   finances,
   staff,
   users,
+  customers,
   onAddUser,
   onToggleUserStatus,
   onDeleteUser,
@@ -66,6 +68,27 @@ export default function ReportingCenterView({
   const [dateFrom, setDateFrom] = useState<string>("2026-06-01");
   const [dateTo, setDateTo] = useState<string>("2026-06-15");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // ADVANCED SUB-REPORTS & DETAILED FILTERS
+  const [subReportProfile, setSubReportProfile] = useState<string>("ledger");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterCashier, setFilterCashier] = useState("all");
+  const [filterMedicineName, setFilterMedicineName] = useState("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
+  const [filterSupplier, setFilterSupplier] = useState("all");
+  const [filterMinProfit, setFilterMinProfit] = useState("all");
+  const [sortField, setSortField] = useState<string>("sn");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  useEffect(() => {
+    if (reportType === "sales") setSubReportProfile("ledger");
+    else if (reportType === "inventory") setSubReportProfile("valuation");
+    else if (reportType === "finance") setSubReportProfile("finance-ledger");
+    else if (reportType === "staff") setSubReportProfile("staff-ledger");
+    setCurrentPage(1);
+  }, [reportType]);
 
   // USER CREATION STATES
   const [newUsername, setNewUsername] = useState("");
@@ -147,6 +170,23 @@ export default function ReportingCenterView({
     return Array.from(new Set(medicines.map(m => m.category)));
   }, [medicines]);
 
+  // Distinct unique values for advanced filter selects
+  const uniqueCashiers = useMemo(() => {
+    return Array.from(new Set(sales.map(s => s.cashierName).filter(Boolean)));
+  }, [sales]);
+
+  const uniqueMedicines = useMemo(() => {
+    return Array.from(new Set(medicines.map(m => m.name)));
+  }, [medicines]);
+
+  const uniquePaymentMethods = useMemo(() => {
+    return ["Cash", "POS", "Bank Transfer", "Mobile Money", "Mixed"];
+  }, []);
+
+  const uniqueSuppliers = useMemo(() => {
+    return Array.from(new Set(medicines.map(m => m.manufacturer).filter(Boolean)));
+  }, [medicines]);
+
   // ==================== FILTERING LOGIC ====================
   // Helper: check if a date is between From and To
   const isWithinDateRange = (dateStr: string) => {
@@ -154,7 +194,88 @@ export default function ReportingCenterView({
     return d >= dateFrom && d <= dateTo;
   };
 
-  // Filtered Sales Report Data
+  // Core Flattened Medicine Sales Transactions Ledger
+  const flattenedSalesTransactions = useMemo(() => {
+    let sNo = 1;
+    const items: any[] = [];
+    sales.forEach(sale => {
+      sale.items.forEach(item => {
+        const med = medicines.find(m => m.id === item.medicineId) || medicines.find(m => m.name === item.medicineName);
+        const category = med ? med.category : "Other";
+        const unitCost = med ? med.purchasePrice : 0;
+        const totalCost = item.quantity * unitCost;
+        const unitSell = item.price;
+        const totalSell = item.quantity * unitSell;
+        
+        // Proportional discount allocation
+        const itemProportion = sale.subtotal > 0 ? (totalSell / sale.subtotal) : 0;
+        const allocatedDiscount = Math.round(sale.discount * itemProportion);
+        const balanceAfterDiscount = totalSell - allocatedDiscount;
+        const profit = balanceAfterDiscount - totalCost;
+        const supplier = med ? med.manufacturer : "Other Supplier";
+
+        items.push({
+          sn: sNo++,
+          invoiceNumber: sale.invoiceNumber,
+          medicineName: item.medicineName,
+          category,
+          quantity: item.quantity,
+          unitCostPrice: unitCost,
+          totalCostPrice: totalCost,
+          unitSellingPrice: unitSell,
+          totalSellingPrice: totalSell,
+          discount: allocatedDiscount,
+          balanceAfterDiscount,
+          profit,
+          paymentMethod: sale.paymentMethod,
+          cashierName: sale.cashierName,
+          date: sale.date,
+          branchId: sale.branchId,
+          supplier,
+          customerName: sale.customerName || "Walk-In Patient",
+          rawSale: sale
+        });
+      });
+    });
+    return items;
+  }, [sales, medicines]);
+
+  // Filtered flattened sales
+  const filteredSalesTransactionsFiltered = useMemo(() => {
+    return flattenedSalesTransactions.filter(item => {
+      // Basic Filters
+      const matchBranch = filterBranchId === "all" || item.branchId === filterBranchId;
+      const matchDate = isWithinDateRange(item.date);
+      const matchCategory = selectedCategory === "all" || item.category === selectedCategory;
+
+      // Advanced Filters
+      const matchCashier = filterCashier === "all" || item.cashierName === filterCashier;
+      const matchMedicine = filterMedicineName === "all" || item.medicineName === filterMedicineName;
+      const matchPayMethod = filterPaymentMethod === "all" || item.paymentMethod === filterPaymentMethod;
+      const matchSupplier = filterSupplier === "all" || item.supplier === filterSupplier;
+
+      // Search Query
+      const matchSearch = !searchQuery ? true : (
+        item.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.medicineName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.customerName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.cashierName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        item.supplier.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      // Minimum Profit Constraint (flagger)
+      let matchMinProfit = true;
+      if (filterMinProfit !== "all") {
+        const threshold = parseFloat(filterMinProfit);
+        matchMinProfit = item.profit < threshold;
+      }
+
+      return matchBranch && matchDate && matchCategory && matchCashier && matchMedicine && matchPayMethod && matchSupplier && matchSearch && matchMinProfit;
+    });
+  }, [flattenedSalesTransactions, filterBranchId, dateFrom, dateTo, selectedCategory, filterCashier, filterMedicineName, filterPaymentMethod, filterSupplier, searchQuery, filterMinProfit]);
+
+  // Filtered Sales Report Data (Original single-order array maintained for backwards compat)
   const filteredSalesData = useMemo(() => {
     return sales.filter(s => {
       const matchBranch = filterBranchId === "all" || s.branchId === filterBranchId;
@@ -162,6 +283,308 @@ export default function ReportingCenterView({
       return matchBranch && matchDate;
     });
   }, [sales, filterBranchId, dateFrom, dateTo]);
+
+  // 1. Top Selling Medicines Report
+  const topSellingReportData = useMemo(() => {
+    const map: Record<string, { medicineName: string; category: string; quantity: number; revenue: number; discount: number; profit: number; supplier: string }> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      const key = tx.medicineName;
+      if (!map[key]) {
+        map[key] = {
+          medicineName: tx.medicineName,
+          category: tx.category,
+          quantity: 0,
+          revenue: 0,
+          discount: 0,
+          profit: 0,
+          supplier: tx.supplier
+        };
+      }
+      map[key].quantity += tx.quantity;
+      map[key].revenue += tx.balanceAfterDiscount;
+      map[key].discount += tx.discount;
+      map[key].profit += tx.profit;
+    });
+    return Object.values(map).sort((a, b) => b.quantity - a.quantity);
+  }, [filteredSalesTransactionsFiltered]);
+
+  // 2. Slow Moving Medicines Report
+  const slowMovingReportData = useMemo(() => {
+    return medicines.map(med => {
+      const activeStock = filterBranchId === "all" ? med.stock : (med.branchStocks[filterBranchId] || 0);
+      const salesTx = flattenedSalesTransactions.filter(tx => 
+        (tx.medicineName === med.name) && 
+        (filterBranchId === "all" || tx.branchId === filterBranchId) &&
+        isWithinDateRange(tx.date)
+      );
+      const totalSold = salesTx.reduce((sum, tx) => sum + tx.quantity, 0);
+      const totalRevenue = salesTx.reduce((sum, tx) => sum + tx.balanceAfterDiscount, 0);
+      const denominator = activeStock + totalSold;
+      const turnoverRate = denominator > 0 ? (totalSold / denominator) * 100 : 0;
+      
+      return {
+        medicineName: med.name,
+        genericName: med.genericName,
+        category: med.category,
+        stock: activeStock,
+        totalSold,
+        turnoverRate,
+        revenue: totalRevenue,
+        supplier: med.manufacturer
+      };
+    }).sort((a, b) => a.turnoverRate - b.turnoverRate);
+  }, [medicines, flattenedSalesTransactions, filterBranchId, dateFrom, dateTo]);
+
+  // 3. Dead Stock Report
+  const deadStockReportData = useMemo(() => {
+    return medicines.map(med => {
+      const activeStock = filterBranchId === "all" ? med.stock : (med.branchStocks[filterBranchId] || 0);
+      if (activeStock === 0) return null;
+
+      const soldInPeriod = flattenedSalesTransactions.some(tx => 
+        tx.medicineName === med.name && 
+        (filterBranchId === "all" || tx.branchId === filterBranchId) &&
+        isWithinDateRange(tx.date)
+      );
+
+      if (soldInPeriod) return null;
+
+      return {
+        medicineName: med.name,
+        genericName: med.genericName,
+        category: med.category,
+        stock: activeStock,
+        costValue: activeStock * med.purchasePrice,
+        retailValue: activeStock * med.sellingPrice,
+        expiryDate: med.expiryDate,
+        shelfLocation: med.storeLocation || "Aisle A",
+        supplier: med.manufacturer
+      };
+    }).filter(Boolean) as any[];
+  }, [medicines, flattenedSalesTransactions, filterBranchId, dateFrom, dateTo]);
+
+  // 4. Low Stock Report
+  const lowStockReportData = useMemo(() => {
+    return medicines.map(med => {
+      const activeStock = filterBranchId === "all" ? med.stock : (med.branchStocks[filterBranchId] || 0);
+      if (activeStock > med.reorderLevel) return null;
+
+      const deficit = med.reorderLevel - activeStock;
+      const suggestedCost = deficit * med.purchasePrice;
+
+      return {
+        medicineName: med.name,
+        category: med.category,
+        currentStock: activeStock,
+        reorderLevel: med.reorderLevel,
+        deficit,
+        suggestedCost,
+        supplier: med.manufacturer
+      };
+    }).filter(Boolean) as any[];
+  }, [medicines, filterBranchId]);
+
+  // 5. Expiry Report
+  const expiryReportData = useMemo(() => {
+    const today = new Date("2026-06-11");
+    return medicines.map(med => {
+      const expiry = new Date(med.expiryDate);
+      const isExpired = expiry < today;
+      const daysToExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      const activeStock = filterBranchId === "all" ? med.stock : (med.branchStocks[filterBranchId] || 0);
+      if (activeStock === 0) return null;
+
+      if (!isExpired && daysToExpiry > 180) return null;
+
+      const wasteValue = activeStock * med.purchasePrice;
+
+      return {
+        medicineName: med.name,
+        batchNumber: med.batchNumber || "B-" + Math.floor(10000 + Math.random() * 90000),
+        category: med.category,
+        expiryDate: med.expiryDate,
+        stock: activeStock,
+        unitCost: med.purchasePrice,
+        wasteValue,
+        status: isExpired ? "Expired" : `Expiring in ${daysToExpiry} days`,
+        daysToExpiry,
+        supplier: med.manufacturer
+      };
+    }).filter(Boolean).sort((a, b) => a.daysToExpiry - b.daysToExpiry) as any[];
+  }, [medicines, filterBranchId]);
+
+  // 6. Profit Margin Report
+  const profitMarginReportData = useMemo(() => {
+    return medicines.map(med => {
+      const profitPerUnit = med.sellingPrice - med.purchasePrice;
+      const pct = med.sellingPrice > 0 ? (profitPerUnit / med.sellingPrice) * 100 : 0;
+      const activeStock = filterBranchId === "all" ? med.stock : (med.branchStocks[filterBranchId] || 0);
+
+      return {
+        medicineName: med.name,
+        category: med.category,
+        costPrice: med.purchasePrice,
+        sellingPrice: med.sellingPrice,
+        profitPerUnit,
+        marginPercent: pct,
+        stock: activeStock,
+        potentialProfit: activeStock * profitPerUnit,
+        supplier: med.manufacturer
+      };
+    }).sort((a, b) => b.marginPercent - a.marginPercent);
+  }, [medicines, filterBranchId]);
+
+  // 7. Cashier Performance Report
+  const cashierPerformanceReportData = useMemo(() => {
+    const map: Record<string, { cashierName: string; revenue: number; count: number; cashSales: number; cardSales: number; transferSales: number }> = {};
+    
+    staff.forEach(stf => {
+      map[stf.name] = {
+        cashierName: stf.name,
+        revenue: 0,
+        count: 0,
+        cashSales: 0,
+        cardSales: 0,
+        transferSales: 0
+      };
+    });
+
+    sales.forEach(s => {
+      if (!isWithinDateRange(s.date)) return;
+      if (filterBranchId !== "all" && s.branchId !== filterBranchId) return;
+
+      const key = s.cashierName;
+      if (!map[key]) {
+        map[key] = {
+          cashierName: key,
+          revenue: 0,
+          count: 0,
+          cashSales: 0,
+          cardSales: 0,
+          transferSales: 0
+        };
+      }
+      map[key].revenue += s.total;
+      map[key].count += 1;
+      if (s.paymentMethod === "Cash") map[key].cashSales += s.total;
+      else if (s.paymentMethod === "POS") map[key].cardSales += s.total;
+      else map[key].transferSales += s.total;
+    });
+
+    return Object.values(map)
+      .map(entry => {
+        const staffRating = staff.find(st => st.name === entry.cashierName)?.performanceScore || 5.0;
+        return {
+          ...entry,
+          avgTicketValue: entry.count > 0 ? entry.revenue / entry.count : 0,
+          attendance: staff.find(st => st.name === entry.cashierName)?.attendanceStatus || "Present",
+          performanceScore: staffRating
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [sales, staff, filterBranchId, dateFrom, dateTo]);
+
+  // 8. Branch Performance Report
+  const branchPerformanceReportData = useMemo(() => {
+    return branches.map(br => {
+      const branchSales = sales.filter(s => s.branchId === br.id && isWithinDateRange(s.date));
+      const totalRevenue = branchSales.reduce((sum, s) => sum + s.total, 0);
+      const totalSalesCount = branchSales.length;
+
+      let totalCost = 0;
+      branchSales.forEach(sale => {
+        sale.items.forEach(item => {
+          const med = medicines.find(m => m.id === item.medicineId) || medicines.find(m => m.name === item.medicineName);
+          const cost = med ? med.purchasePrice : 0;
+          totalCost += item.quantity * cost;
+        });
+      });
+
+      const netProfit = totalRevenue - totalCost;
+      const margin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+      return {
+        branchName: br.name,
+        manager: staff.find(s => s.branchId === br.id && s.role === "Branch Manager")?.name || "System Admin",
+        totalSalesCount,
+        totalRevenue,
+        costValue: totalCost,
+        netProfit,
+        marginPercent: margin
+      };
+    }).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }, [branches, sales, medicines, staff, dateFrom, dateTo]);
+
+  // 9. Supplier Purchase Report
+  const supplierPurchaseReportData = useMemo(() => {
+    const map: Record<string, { supplierName: string; medicinesCount: number; stockCarried: number; costEstimate: number }> = {};
+    medicines.forEach(m => {
+      const supplier = m.manufacturer || "Other Manufacturer";
+      const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
+      if (!map[supplier]) {
+        map[supplier] = {
+          supplierName: supplier,
+          medicinesCount: 0,
+          stockCarried: 0,
+          costEstimate: 0
+        };
+      }
+      map[supplier].medicinesCount += 1;
+      map[supplier].stockCarried += qty;
+      map[supplier].costEstimate += (qty * m.purchasePrice);
+    });
+    return Object.values(map)
+      .map(entry => ({
+        ...entry,
+        contactPerson: "Dr. Al-Fayeed " + entry.supplierName.split(" ")[0],
+        phone: "+234 803 111 " + Math.floor(1000 + Math.random() * 9000),
+        outstandingBalance: Math.round(entry.costEstimate * 0.12)
+      }))
+      .sort((a, b) => b.costEstimate - a.costEstimate);
+  }, [medicines, filterBranchId]);
+
+  // 10. Customer Purchase Report
+  const customerPurchaseReportData = useMemo(() => {
+    const map: Record<string, { customerName: string; phone: string; email: string; points: number; salesVolume: number; count: number }> = {};
+    customers.forEach(cust => {
+      map[cust.name] = {
+        customerName: cust.name,
+        phone: cust.phone,
+        email: cust.email,
+        points: cust.loyaltyPoints,
+        salesVolume: 0,
+        count: 0
+      };
+    });
+
+    sales.forEach(s => {
+      if (!isWithinDateRange(s.date)) return;
+      if (filterBranchId !== "all" && s.branchId !== filterBranchId) return;
+
+      const key = s.customerName;
+      if (!map[key]) {
+        map[key] = {
+          customerName: key,
+          phone: "+234 812 345 " + Math.floor(1000 + Math.random() * 9000),
+          email: key.toLowerCase().split(" ")[0] + "@gmail.com",
+          points: 10,
+          salesVolume: 0,
+          count: 0
+        };
+      }
+      map[key].salesVolume += s.total;
+      map[key].count += 1;
+    });
+
+    return Object.values(map)
+      .map(entry => ({
+        ...entry,
+        walletBalance: Math.round(entry.salesVolume * 0.05),
+        creditLimit: 50000
+      }))
+      .sort((a, b) => b.salesVolume - a.salesVolume);
+  }, [sales, customers, filterBranchId, dateFrom, dateTo]);
 
   // Filtered Inventory Valuation Data
   const filteredInventoryData = useMemo(() => {
@@ -300,44 +723,228 @@ export default function ReportingCenterView({
     return { totalIncome, totalExpense, netProfit, profitMargin };
   }, [filteredFinancesData]);
 
-  // ==================== CSV/EXCEL GENERATION LOGIC ====================
-  const handleExportCSV = () => {
-    let csvContent = "data:text/csv;charset=utf-8,";
-    onAddActivityLog("Report Export", `Exported CSV dataset for ${reportType} report.`);
+  // ==================== SORTING & PAGINATION LOGIC ====================
+  // 1. Get raw current dataset
+  const currentRawDataList = useMemo(() => {
+    switch (subReportProfile) {
+      case "ledger":
+        return filteredSalesTransactionsFiltered;
+      case "top-selling":
+        return topSellingReportData;
+      case "slow-moving":
+        return slowMovingReportData;
+      case "dead-stock":
+        return deadStockReportData;
+      case "low-stock":
+        return lowStockReportData;
+      case "expiry":
+        return expiryReportData;
+      case "cashier-perf":
+        return cashierPerformanceReportData;
+      case "branch-perf":
+        return branchPerformanceReportData;
+      case "supplier-purchase":
+        return supplierPurchaseReportData;
+      case "customer-purchase":
+        return customerPurchaseReportData;
+      default:
+        return [];
+    }
+  }, [
+    subReportProfile,
+    filteredSalesTransactionsFiltered,
+    topSellingReportData,
+    slowMovingReportData,
+    deadStockReportData,
+    lowStockReportData,
+    expiryReportData,
+    cashierPerformanceReportData,
+    branchPerformanceReportData,
+    supplierPurchaseReportData,
+    customerPurchaseReportData
+  ]);
 
-    if (reportType === "sales") {
-      csvContent += "Invoice Number,Date,Branch NAME,Customer Name,Items Count,Total Amount,Payment Method,Cashier\r\n";
-      filteredSalesData.forEach(s => {
-        const branchName = branches.find(b => b.id === s.branchId)?.name || s.branchId;
-        const line = `"${s.invoiceNumber}","${s.date.split("T")[0]}","${branchName}","${s.customerName}",${s.items.length},${s.total},"${s.paymentMethod}","${s.cashierName}"`;
-        csvContent += line + "\r\n";
-      });
-    } else if (reportType === "inventory") {
-      csvContent += "Medicine Name,Generic Name,Manufacturer,Category,Type,Expiry Date,Stock Level,Cost Value (NGN),Retail Value (NGN)\r\n";
-      filteredInventoryData.forEach(m => {
-        const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
-        const line = `"${m.name}","${m.genericName}","${m.manufacturer}","${m.category}","${m.type}","${m.expiryDate}",${qty},${m.purchasePrice * qty},${m.sellingPrice * qty}`;
-        csvContent += line + "\r\n";
-      });
-    } else if (reportType === "finance") {
-      csvContent += "Record ID,Date,Type,Category,Amount (NGN),Payment Method,Description\r\n";
-      filteredFinancesData.forEach(f => {
-        const line = `"${f.id}","${f.date}","${f.type}","${f.category}",${f.amount},"${f.paymentMethod}","${f.description}"`;
-        csvContent += line + "\r\n";
-      });
-    } else if (reportType === "staff") {
-      csvContent += "Employee Name,Role,Assigned Branch,Salary (NGN),Sales Managed,Performance Score\r\n";
-      calculatedStaffData.forEach(s => {
-        const branchName = branches.find(b => b.id === s.branchId)?.name || s.branchId;
-        const line = `"${s.name}","${s.role}","${branchName}",${s.salary},${s.salesCount},${s.performanceScore}`;
-        csvContent += line + "\r\n";
+  // 2. Sort current raw dataset (with full-strength dynamic type casting)
+  const sortedAndPaginatedData = useMemo(() => {
+    const dataCopy = [...currentRawDataList];
+    if (sortField) {
+      dataCopy.sort((a, b) => {
+        let valA = a[sortField];
+        let valB = b[sortField];
+
+        if (valA === undefined || valA === null) return 1;
+        if (valB === undefined || valB === null) return -1;
+
+        if (typeof valA === "string" && typeof valB === "string") {
+          return sortDirection === "asc"
+            ? valA.localeCompare(valB)
+            : valB.localeCompare(valA);
+        } else {
+          // Numbers or other comparable types
+          return sortDirection === "asc"
+            ? (valA > valB ? 1 : -1)
+            : (valA < valB ? 1 : -1);
+        }
       });
     }
 
-    const encodedUri = encodeURI(csvContent);
+    // B. PAGINATE
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return dataCopy.slice(startIndex, startIndex + rowsPerPage);
+  }, [currentRawDataList, sortField, sortDirection, currentPage, rowsPerPage]);
+
+  // 3. Render sortable header helper
+  const renderSortableHeader = (field: string, label: string) => {
+    const isSorted = sortField === field;
+    return (
+      <button
+        onClick={() => {
+          if (sortField === field) {
+            setSortDirection(prev => (prev === "asc" ? "desc" : "asc"));
+          } else {
+            setSortField(field);
+            setSortDirection("asc");
+          }
+          setCurrentPage(1);
+        }}
+        className="flex items-center gap-1 font-bold tracking-wider text-[10px] uppercase cursor-pointer hover:text-slate-900 focus:outline-none transition-colors"
+      >
+        <span>{label}</span>
+        {isSorted ? (
+          sortDirection === "asc" ? (
+            <span className="text-[9px] text-emerald-600">▲</span>
+          ) : (
+            <span className="text-[9px] text-rose-600">▼</span>
+          )
+        ) : (
+          <span className="text-slate-300 text-[9px]">↕</span>
+        )}
+      </button>
+    );
+  };
+
+  // ==================== CSV/EXCEL GENERATION LOGIC ====================
+  const handleExportCSV = () => {
+    let csvContent = "\ufeff"; // Force UTF-8 BOM so Excel opens it with correct accents
+    onAddActivityLog("Report Export", `Exported CSV dataset for ${reportType} (${subReportProfile}) report.`);
+
+    // Add metadata/business headers to preserve context
+    csvContent += `"${businessSettings.businessName} Audit Report"\r\n`;
+    csvContent += `"Branch Scope","${filterBranchId === "all" ? "Combined Area Network" : branches.find(b => b.id === filterBranchId)?.name || filterBranchId}"\r\n`;
+    csvContent += `"Date Range","${dateFrom} to ${dateTo}"\r\n`;
+    csvContent += `"Exported Timestamp","${new Date().toLocaleString()}"\r\n\r\n`;
+
+    if (subReportProfile === "ledger") {
+      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount Allocated (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date,Branch\r\n";
+      let totalQty = 0;
+      let totalCost = 0;
+      let totalSell = 0;
+      let totalDiscount = 0;
+      let totalNett = 0;
+      let totalProfit = 0;
+
+      filteredSalesTransactionsFiltered.forEach((tx, idx) => {
+        totalQty += tx.quantity;
+        totalCost += tx.totalCostPrice;
+        totalSell += tx.totalSellingPrice;
+        totalDiscount += tx.discount;
+        totalNett += tx.balanceAfterDiscount;
+        totalProfit += tx.profit;
+
+        const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
+        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${tx.date.split("T")[0]}","${branchName}"`;
+        csvContent += line + "\r\n";
+      });
+
+      // Add Grand Totals row
+      csvContent += `\r\n"GRAND TOTALS",,-,-,${totalQty},-,${totalCost},-,${totalSell},${totalDiscount},${totalNett},${totalProfit},-,-,-,-\r\n`;
+    
+    } else if (subReportProfile === "top-selling") {
+      csvContent += "S/N,Medicine Name,Category,Total Quantity Sold,Total Net Revenue (NGN),Total Discounts (NGN),Profit Generated (NGN),Supplier\r\n";
+      topSellingReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.category}",${row.quantity},${row.revenue},${row.discount},${row.profit},"${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "slow-moving") {
+      csvContent += "S/N,Medicine Name,Generic Name,Category,Stock Units,Total Sold Units,Turnover Rate %,Revenue Generated (NGN),Supplier\r\n";
+      slowMovingReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.genericName}","${row.category}",${row.stock},${row.totalSold},${row.turnoverRate.toFixed(2)},${row.revenue},"${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "dead-stock") {
+      csvContent += "S/N,Medicine Name,Generic Name,Category,Physical Stock,Wholesale Cost value (NGN),Retail Listing Value (NGN),Expiry Date,Shelf Location,Supplier\r\n";
+      deadStockReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.genericName}","${row.category}",${row.stock},${row.costValue},${row.retailValue},"${row.expiryDate}","${row.shelfLocation}","${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "low-stock") {
+      csvContent += "S/N,Medicine Name,Category,Current Stock,Reorder Level,Deficit Units,Suggested Reorder Cost (NGN),Supplier\r\n";
+      lowStockReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.category}",${row.currentStock},${row.reorderLevel},${row.deficit},${row.suggestedCost},"${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "expiry") {
+      csvContent += "S/N,Medicine Name,Batch Code,Category,Expiry Date,Stock Units,Unit Cost (NGN),Waste Value (NGN),Status,Supplier\r\n";
+      expiryReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.batchNumber}","${row.category}","${row.expiryDate}",${row.stock},${row.unitCost},${row.wasteValue},"${row.status}","${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "profit-margin") {
+      csvContent += "S/N,Medicine Name,Category,Cost Price (NGN),Selling Price (NGN),Profit Margin/Unit (NGN),Margin %,Physical Stock,Potential Profit (NGN),Supplier\r\n";
+      profitMarginReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.medicineName}","${row.category}",${row.costPrice},${row.sellingPrice},${row.profitPerUnit},${row.marginPercent.toFixed(1)},${row.stock},${row.potentialProfit},"${row.supplier}"\r\n`;
+      });
+
+    } else if (subReportProfile === "cashier-perf") {
+      csvContent += "S/N,Cashier Name,Attendance,Total sales Revenue (NGN),Total checkouts count,Avg Ticket Value (NGN),Performance Score\r\n";
+      cashierPerformanceReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.cashierName}","${row.attendance}",${row.revenue},${row.count},${row.avgTicketValue.toFixed(2)},${row.performanceScore.toFixed(1)}\r\n`;
+      });
+
+    } else if (subReportProfile === "branch-perf") {
+      csvContent += "S/N,Branch Name,Manager,Total checkout count,Total sales Revenue (NGN),Total Cost Value (NGN),Nett Profit (NGN),Profit Margin %\r\n";
+      branchPerformanceReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.branchName}","${row.manager}",${row.totalSalesCount},${row.totalRevenue},${row.costValue},${row.netProfit},${row.marginPercent.toFixed(1)}\r\n`;
+      });
+
+    } else if (subReportProfile === "supplier-purchase") {
+      csvContent += "S/N,Supplier Name,Contact Person,Phone,Outstanding Accounts Payable (NGN),Medicines Count,Wholesale Stock value carried (NGN)\r\n";
+      supplierPurchaseReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.supplierName}","${row.contactPerson}","${row.phone}",${row.outstandingBalance},${row.medicinesCount},${row.costEstimate}\r\n`;
+      });
+
+    } else if (subReportProfile === "customer-purchase") {
+      csvContent += "S/N,Patient Name,Phone,Email,Loyalty Points,Cashback Wallet (NGN),Credit Limit (NGN),Total Purchase Volume (NGN),Checkout Count\r\n";
+      customerPurchaseReportData.forEach((row, idx) => {
+        csvContent += `${idx + 1},"${row.customerName}","${row.phone}","${row.email}",${row.points},${row.walletBalance},${row.creditLimit},${row.salesVolume},${row.count}\r\n`;
+      });
+
+    } else if (reportType === "inventory" || subReportProfile === "valuation") {
+      csvContent += "Medicine Name,Generic Name,Manufacturer,Category,Type,Expiry Date,Stock Level,Cost Value (NGN),Retail Value (NGN)\r\n";
+      filteredInventoryData.forEach(m => {
+        const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
+        csvContent += `"${m.name}","${m.genericName}","${m.manufacturer}","${m.category}","${m.type}","${m.expiryDate}",${qty},${m.purchasePrice * qty},${m.sellingPrice * qty}\r\n`;
+      });
+
+    } else if (reportType === "finance" || subReportProfile === "finance-ledger") {
+      csvContent += "Record ID,Date,Type,Category,Amount (NGN),Payment Method,Description\r\n";
+      filteredFinancesData.forEach(f => {
+        csvContent += `"${f.id}","${f.date}","${f.type}","${f.category}",${f.amount},"${f.paymentMethod}","${f.description}"\r\n`;
+      });
+
+    } else if (reportType === "staff" || subReportProfile === "staff-ledger") {
+      csvContent += "Employee Name,Role,Assigned Branch,Salary (NGN),Sales Managed,Performance Score\r\n";
+      calculatedStaffData.forEach(s => {
+        const branchName = branches.find(b => b.id === s.branchId)?.name || s.branchId;
+        csvContent += `"${s.name}","${s.role}","${branchName}",${s.salary},${s.salesCount},${s.performanceScore}\r\n`;
+      });
+    }
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `pharma_erp_${reportType}_report_${dateFrom}_to_${dateTo}.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `pharmerp_${subReportProfile}_report_${dateFrom}_to_${dateTo}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

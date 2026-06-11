@@ -3,7 +3,7 @@ import {
   Search, Barcode, Trash2, ShoppingCart, UserPlus, CreditCard, 
   Percent, FileText, CheckCircle, Printer, MessageSquare, Mail, AlertTriangle,
   Clock, History, TrendingUp, ShieldCheck, Package, Layers, FileSpreadsheet, 
-  AlertCircle, Ban, BellRing, Info
+  AlertCircle, Ban, BellRing, Info, ChevronDown, ChevronRight
 } from "lucide-react";
 import { Medicine, Customer, Sale, SaleItem, ERPUser } from "../types";
 
@@ -19,6 +19,7 @@ interface PosViewProps {
 
 export default function PosView({ medicines, customers, activeBranchId, onAddSale, onUpdateStock, currentUser, sales }: PosViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<"checkout" | "history" | "eod">("checkout");
+  const [expandedInvoices, setExpandedInvoices] = useState<Record<string, boolean>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -892,26 +893,79 @@ export default function PosView({ medicines, customers, activeBranchId, onAddSal
                     </tr>
                   </thead>
                   <tbody>
-                    {sales.filter(s => s.cashierName === currentUser.username).map((s: Sale, index: number) => (
-                      <tr key={index} className="border-b border-white/5 hover:bg-slate-950/20 transition-colors">
-                        <td className="py-2 px-3 font-bold text-emerald-400 font-mono">{s.invoiceNumber}</td>
-                        <td className="py-2 px-3 font-medium text-slate-200">{s.customerName}</td>
-                        <td className="py-2 px-3">
-                          <span className="bg-slate-800 text-slate-300 font-bold px-1.5 py-0.5 rounded text-[10px] border border-slate-700">
-                            {s.items.length} items
-                          </span>
-                        </td>
-                        <td className="py-2 px-3">
-                          <span className="bg-teal-500/10 text-[#2dd4bf] font-semibold px-2 py-0.5 rounded text-[10px] uppercase font-mono border border-teal-500/20">
-                            {s.paymentMethod}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 font-mono font-bold text-white">₦{s.total.toLocaleString()}</td>
-                        <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">
-                          {new Date(s.date).toLocaleDateString()} {new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </td>
-                      </tr>
-                    ))}
+                    {sales.filter(s => s.cashierName === currentUser.username).map((s: Sale, index: number) => {
+                      const isExpanded = !!expandedInvoices[s.id || s.invoiceNumber];
+                      return (
+                        <React.Fragment key={s.id || index}>
+                          <tr 
+                            onClick={() => setExpandedInvoices(prev => ({ ...prev, [s.id || s.invoiceNumber]: !isExpanded }))}
+                            className="border-b border-white/5 hover:bg-slate-950/20 transition-colors cursor-pointer"
+                          >
+                            <td className="py-2.5 px-3 font-bold text-emerald-400 font-mono flex items-center gap-1.5 focus:outline-none">
+                              {isExpanded ? <ChevronDown size={12} className="text-slate-400" /> : <ChevronRight size={12} className="text-slate-400" />}
+                              {s.invoiceNumber}
+                            </td>
+                            <td className="py-2.5 px-3 font-medium text-slate-200">{s.customerName}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="bg-slate-800 text-slate-300 font-bold px-1.5 py-0.5 rounded text-[10px] border border-slate-700">
+                                {s.items.length} items
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="bg-teal-500/10 text-[#2dd4bf] font-semibold px-2 py-0.5 rounded text-[10px] uppercase font-mono border border-teal-500/20">
+                                {s.paymentMethod}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-white">₦{s.total.toLocaleString()}</td>
+                            <td className="py-2.5 px-3 text-slate-400 font-mono text-[10px]">
+                              {new Date(s.date).toLocaleDateString()} {new Date(s.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="bg-slate-950/65">
+                              <td colSpan={6} className="py-3 px-4 border-b border-white/5">
+                                <div className="space-y-3 text-xs max-w-2xl text-slate-300">
+                                  <div className="flex justify-between items-center text-[10px] uppercase font-extrabold text-[#2dd4bf] font-mono border-b border-white/5 pb-1">
+                                    <span>Prescribed Medication Log</span>
+                                    <span>Qty x Unit Price = Subtotal</span>
+                                  </div>
+                                  <div className="space-y-1.5 font-sans">
+                                    {s.items.map((item, idy) => (
+                                      <div key={idy} className="flex justify-between items-center bg-slate-900/40 p-1.5 rounded border border-white/5">
+                                        <div>
+                                          <p className="font-semibold text-slate-200">{item.medicineName}</p>
+                                          <p className="text-[9px] text-slate-500">Batch Code: {item.batchNumber || "UNSPECIFIED"}</p>
+                                        </div>
+                                        <div className="text-right font-mono">
+                                          <span>{item.quantity} units x ₦{item.price.toLocaleString()}</span>
+                                          <strong className="text-slate-100 ml-2">= ₦{(item.quantity * item.price).toLocaleString()}</strong>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="border-t border-dashed border-white/5 pt-2 grid grid-cols-2 gap-4 font-mono text-[10px] text-slate-400">
+                                    <div className="space-y-1">
+                                      <p>Invoice Total: <strong className="text-slate-200">₦{s.subtotal.toLocaleString()}</strong></p>
+                                      <p>Discount Paid: <strong className="text-rose-400 font-bold">-₦{s.discount.toLocaleString()}</strong></p>
+                                      <p>Sales Tax Total: <strong className="text-slate-200">₦{s.taxTotal.toLocaleString()}</strong></p>
+                                      <p className="text-xs border-t border-white/5 pt-1">
+                                        Nett Paid: <strong className="text-[#2dd4bf] text-xs">₦{s.total.toLocaleString()}</strong>
+                                      </p>
+                                    </div>
+                                    <div className="space-y-1 pl-4 border-l border-white/5">
+                                      <p>📍 Branch Gate: <strong className="text-slate-200 uppercase">{s.branchId === "b1" ? "Ikeja Plaza" : s.branchId === "b2" ? "Wuse II Mall" : "Sabon Gari Hub"}</strong></p>
+                                      <p>👤 Cashier Session: <strong className="text-slate-200">{s.cashierName}</strong></p>
+                                      <p>💳 Payment Mode: <strong className="text-emerald-400">{s.paymentMethod}</strong></p>
+                                      <p>📅 Dispatch Date: <strong className="text-slate-200">{new Date(s.date).toLocaleString()}</strong></p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                     {sales.filter(s => s.cashierName === currentUser.username).length === 0 && (
                       <tr>
                         <td colSpan={6} className="py-8 text-center text-slate-400">
