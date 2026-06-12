@@ -196,63 +196,118 @@ body {
 
 /* Print-Specific Stylesheet Overrides */
 @media print {
-  body {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-  }
-  
-  /* Hide every page element except our designated print viewport area */
-  body > *:not(.fixed) {
+  /* Prevents blank page and hides other overlays */
+  body > *:not(#root) {
     display: none !important;
   }
   
-  .fixed {
-    position: absolute !important;
-    inset: 0 !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-  }
-  
-  /* Hide the modal's left settings panel and top action bars */
+  #navigation-sidebar,
   .print\:hidden,
-  .print-settings-sidebar {
+  button,
+  input,
+  select,
+  textarea,
+  .print-settings-sidebar,
+  header {
     display: none !important;
   }
 
-  .print-main-content {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Expand layout to fit exactly on page */
+  #root,
+  #root > div,
+  #root > div > div {
+    display: block !important;
+    position: static !important;
     width: 100% !important;
     height: auto !important;
     overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Override fixed overlay positioning in print to let long tables split normally */
+  .fixed.inset-0 {
+    position: absolute !important;
+    inset: 0 !important;
+    background: white !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    border: none !important;
+  }
+
+  .print-main-content {
     background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  ::-webkit-scrollbar {
+    display: none !important;
   }
 
   #print-area {
     display: block !important;
     width: 100% !important;
+    max-width: 100% !important;
     border: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    background: white !important;
-    color: black !important;
+    background: transparent !important;
+    color: #000000 !important;
     box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* High fidelity print design styling for grid rows and cells */
+  table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    background-color: #ffffff !important;
+  }
+  
+  th {
+    background-color: #f1f5f9 !important;
+    color: #000055 !important;
+    border: 1px solid #94a3b8 !important;
+    font-weight: 700 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  td {
+    color: #000000 !important;
+    border: 1px solid #cbd5e1 !important;
+    background-color: #ffffff !important;
   }
 
   tr {
     page-break-inside: avoid !important;
   }
 
-  /* Support paper margins dynamically */
+  /* Align dashboard grids correctly in PDF print format */
+  .grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+
   @page {
     size: auto;
-    margin: 12mm 15mm 12mm 15mm;
+    margin: 15mm;
   }
 }
 

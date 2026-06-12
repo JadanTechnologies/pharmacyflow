@@ -17,6 +17,8 @@ import OtherModulesView from "./components/OtherModulesView";
 import NotificationCenter from "./components/NotificationCenter";
 import ReportingCenterView from "./components/ReportingCenterView";
 import LoginView from "./components/LoginView";
+import CrmPatientsView from "./components/CrmPatientsView";
+import { Users } from "lucide-react";
 
 // Constants and seeds
 import { 
@@ -180,7 +182,8 @@ export default function App() {
     ai_voice: "dashboard",
     finance: "purchases",
     reports_admin: "reports",
-    other_modules: "settings"
+    other_modules: "settings",
+    crm_patients: "sales"
   };
 
   const isAllowed = (tab: string) => {
@@ -433,6 +436,23 @@ export default function App() {
     setSuppliers(prev => [sup, ...prev]);
   };
 
+  // Patient CRM Database State Management Handlers
+  const handleAddCustomer = (newCust: Customer) => {
+    setCustomers(prev => [...prev, newCust]);
+    handleAddActivityLog("User Management", `Created new patient care profile: ${newCust.name}`);
+  };
+
+  const handleUpdateCustomer = (updatedCust: Customer) => {
+    setCustomers(prev => prev.map(c => c.id === updatedCust.id ? updatedCust : c));
+    handleAddActivityLog("User Management", `Updated patient care profile details: ${updatedCust.name}`);
+  };
+
+  const handleDeleteCustomer = (id: string) => {
+    const cust = customers.find(c => c.id === id);
+    setCustomers(prev => prev.filter(c => c.id !== id));
+    handleAddActivityLog("User Management", `Deleted patient care profile permanently: ${cust?.name || id}`);
+  };
+
   // Count expiring alerts indicator for top menu indicators
   const lowStockExpiringTotalCount = useMemo(() => {
     const today = new Date("2026-06-11");
@@ -678,6 +698,23 @@ export default function App() {
               </button>
             )}
 
+            {isAllowed("crm_patients") && (
+              <button
+                onClick={() => setActiveTab("crm_patients")}
+                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                  activeTab === "crm_patients"
+                    ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
+                    : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Users size={14} className={activeTab === "crm_patients" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
+                  Patient Care CRM
+                </span>
+                <span className="bg-[#10B981]/15 text-[#34D399] py-0.5 px-2 rounded-full font-mono text-[9px] border border-[#10B981]/20">Active</span>
+              </button>
+            )}
+
             {isAllowed("other_modules") && (
               <button
                 onClick={() => setActiveTab("other_modules")}
@@ -915,6 +952,18 @@ export default function App() {
                   onAddBackup={handleAddBackup}
                   onAddStaff={handleAddStaff}
                   onAddSupplier={handleAddSupplier}
+                />
+              )}
+
+              {activeTab === "crm_patients" && (
+                <CrmPatientsView 
+                  customers={customers}
+                  prescriptions={prescriptions}
+                  onAddCustomer={handleAddCustomer}
+                  onUpdateCustomer={handleUpdateCustomer}
+                  onDeleteCustomer={handleDeleteCustomer}
+                  onAddPrescription={handleAddPrescription}
+                  currentUser={currentUser}
                 />
               )}
 

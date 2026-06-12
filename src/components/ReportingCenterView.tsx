@@ -4130,7 +4130,15 @@ export default function ReportingCenterView({
       {/*         UNIFIED EXPORT & PRINT CUSTOMIZATION SUITE       */}
       {/* ======================================================== */}
       {showPrintModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 text-slate-800">
+        <>
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              @page {
+                size: ${printOrientation === "landscape" ? "landscape" : "portrait"};
+              }
+            }
+          ` }} />
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 text-slate-800">
           <div className="bg-white rounded-2xl w-full max-w-7xl h-[92vh] flex flex-col md:flex-row overflow-hidden shadow-2xl border border-slate-300">
             
             {/* LEFT COLUMN: INTERACTIVE SETTINGS SIDEBAR */}
@@ -4608,6 +4616,7 @@ export default function ReportingCenterView({
 
           </div>
         </div>
+        </>
       )}
 
     </div>
