@@ -643,6 +643,13 @@ export default function ReportingCenterView({
     }).filter(Boolean) as Array<Staff & { totalSalesValue: number; salesCount: number }>;
   }, [staff, sales, filterBranchId, dateFrom, dateTo]);
 
+  const staffChartDataProcessed = useMemo(() => {
+    return calculatedStaffData.map(s => ({
+      name: s.name.split(" ")[1] || s.name,
+      sales: s.totalSalesValue
+    }));
+  }, [calculatedStaffData]);
+
   // ==================== RECHARTS TRANSFORMERS ====================
   const salesChartData = useMemo(() => {
     const dates: { [date: string]: number } = {};
@@ -2657,7 +2664,7 @@ export default function ReportingCenterView({
                 {reportType === "staff" && (
                   calculatedStaffData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={calculatedStaffData.map(s => ({ name: s.name.split(" ")[1] || s.name, sales: s.totalSalesValue }))} layout="vertical" margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                      <BarChart data={staffChartDataProcessed} layout="vertical" margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis type="number" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
                         <YAxis dataKey="name" type="category" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
@@ -2730,7 +2737,7 @@ export default function ReportingCenterView({
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
             
             {/* Header Title block */}
-            <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
               <div>
                 <h3 className="text-xs uppercase tracking-wider font-extrabold text-slate-700 flex items-center gap-1.5">
                   <Grid size={13} className="text-emerald-500" />
@@ -2738,11 +2745,46 @@ export default function ReportingCenterView({
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">National Agency for Food & Drug Administration (NAFDAC) formatted record index</p>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[9px] font-bold font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
                   DATABASE CONNECTED (LIVE)
                 </span>
+
+                {/* Highly prominent and accessible Print & Export tools directly in the report area */}
+                <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl border border-slate-200">
+                  <button
+                    onClick={() => handlePrintTrigger("csv")}
+                    className="flex items-center gap-1.5 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-250 shadow-sm"
+                    title="Export the active report table into Excel (CSV) format"
+                  >
+                    <Download size={12} className="text-emerald-500 font-bold" />
+                    <span>Export CSV</span>
+                  </button>
+                  <button
+                    onClick={() => handlePrintTrigger("pdf")}
+                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-950 shadow-sm"
+                    title="Open print layout settings to output high-quality custom PDF"
+                  >
+                    <Printer size={12} className="text-emerald-400 font-bold" />
+                    <span>Print PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handlePrintTrigger("txt")}
+                    className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
+                    title="Save current report as TXT"
+                  >
+                    <FileText size={11} className="text-slate-500" />
+                    <span>TXT</span>
+                  </button>
+                  <button
+                    onClick={() => handlePrintTrigger("json")}
+                    className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
+                    title="Copy or export structural JSON schema"
+                  >
+                    <span>JSON</span>
+                  </button>
+                </div>
               </div>
             </div>
 
