@@ -165,6 +165,21 @@ export default function ReportingCenterView({
   // PRINTING MODAL STATE
   const [showPrintModal, setShowPrintModal] = useState(false);
 
+  // PRINT/EXPORT CUSTOMIZER STATES
+  const [exportFormat, setExportFormat] = useState<"pdf" | "csv" | "json" | "txt">("pdf");
+  const [printOrientation, setPrintOrientation] = useState<"portrait" | "landscape">("portrait");
+  const [printDensity, setPrintDensity] = useState<"compact" | "comfortable">("comfortable");
+  const [printShowKPIs, setPrintShowKPIs] = useState(true);
+  const [printShowSignatures, setPrintShowSignatures] = useState(true);
+  const [printShowNAFDAC, setPrintShowNAFDAC] = useState(true);
+  const [printShowTotals, setPrintShowTotals] = useState(true);
+
+  // Columns visibility states
+  const [salesCols, setSalesCols] = useState<string[]>(["invoice", "date", "customer", "items", "discount", "total", "method"]);
+  const [inventoryCols, setInventoryCols] = useState<string[]>(["name", "category", "stock", "cost", "retail", "totalCost", "totalRetail"]);
+  const [financeCols, setFinanceCols] = useState<string[]>(["id", "date", "type", "category", "desc", "amount"]);
+  const [staffCols, setStaffCols] = useState<string[]>(["name", "role", "salary", "salesCount", "totalSales", "score"]);
+
   // Active categories in medicine db
   const uniqueCategories = useMemo(() => {
     return Array.from(new Set(medicines.map(m => m.category)));
@@ -996,30 +1011,19 @@ export default function ReportingCenterView({
     csvContent += `"Date Range","${dateFrom} to ${dateTo}"\r\n`;
     csvContent += `"Exported Timestamp","${new Date().toLocaleString()}"\r\n\r\n`;
 
-    if (subReportProfile === "ledger") {
-      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount Allocated (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date,Branch\r\n";
-      let totalQty = 0;
-      let totalCost = 0;
-      let totalSell = 0;
-      let totalDiscount = 0;
-      let totalNett = 0;
-      let totalProfit = 0;
-
-      filteredSalesTransactionsFiltered.forEach((tx, idx) => {
-        totalQty += tx.quantity;
-        totalCost += tx.totalCostPrice;
-        totalSell += tx.totalSellingPrice;
-        totalDiscount += tx.discount;
-        totalNett += tx.balanceAfterDiscount;
-        totalProfit += tx.profit;
-
-        const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${tx.date.split("T")[0]}","${branchName}"`;
-        csvContent += line + "\r\n";
+    if (subReportProfile === "ledger" && reportType === "sales") {
+      csvContent += "S/N,Medicine Name,Category,Quantity,Unit Cost (NGN),Total Cost (NGN),Unit Selling (NGN),Total Selling (NGN),Discount (NGN),Balance Nett (NGN),Method,Cashier,Date & Time,Branch\r\n";
+      
+      filteredSalesTransactionsFiltered.forEach((row: any) => {
+        const branchObj = branches.find(b => b.id === row.branchId);
+        const branchName = branchObj ? branchObj.name : row.branchId;
+        const formattedDate = row.date.replace("T", " ").substring(0, 16);
+        
+        csvContent += `${row.sn},"${row.medicineName}","${row.category}",${row.quantity},${row.unitCostPrice},${row.totalCostPrice},${row.unitSellingPrice},${row.totalSellingPrice},${row.discount},${row.balanceAfterDiscount},"${row.paymentMethod}","${row.cashierName}","${formattedDate}","${branchName}"\r\n`;
       });
-
-      // Add Grand Totals row
-      csvContent += `\r\n"GRAND TOTALS",,-,-,${totalQty},-,${totalCost},-,${totalSell},${totalDiscount},${totalNett},${totalProfit},-,-,-,-\r\n`;
+      
+      // Dynamic Corporate Grand Totals row to match exactly what the user displayed
+      csvContent += `\r\n"Grand Corporate Totals",,,"${reportTotals.quantitySum}",,,"${reportTotals.costPriceSum}",,,"${reportTotals.sellingPriceSum}","-${reportTotals.discountSum}","${reportTotals.balanceSum}",,,"ESTIMATED GROSS PROFIT: ${reportTotals.profitSum}"\r\n`;
     
     } else if (subReportProfile === "top-selling") {
       csvContent += "S/N,Medicine Name,Category,Total Quantity Sold,Total Net Revenue (NGN),Total Discounts (NGN),Profit Generated (NGN),Supplier\r\n";
@@ -1081,24 +1085,76 @@ export default function ReportingCenterView({
         csvContent += `${idx + 1},"${row.customerName}","${row.phone}","${row.email}",${row.points},${row.walletBalance},${row.creditLimit},${row.salesVolume},${row.count}\r\n`;
       });
 
-    } else if (reportType === "inventory" || subReportProfile === "valuation") {
-      csvContent += "Medicine Name,Generic Name,Manufacturer,Category,Type,Expiry Date,Stock Level,Cost Value (NGN),Retail Value (NGN)\r\n";
-      filteredInventoryData.forEach(m => {
+    } else if (reportType === "inventory") {
+      const headersList: string[] = [];
+      if (inventoryCols.includes("name")) headersList.push("Medicine Profile", "Generic Composition");
+      if (inventoryCols.includes("category")) headersList.push("Category");
+      if (inventoryCols.includes("stock")) headersList.push("Stock Level");
+      if (inventoryCols.includes("cost")) headersList.push("Landed Cost (NGN)");
+      if (inventoryCols.includes("retail")) headersList.push("Retail Price (NGN)");
+      if (inventoryCols.includes("totalCost")) headersList.push("Total Wholesale Cost (NGN)");
+      if (inventoryCols.includes("totalRetail")) headersList.push("Total Retail Value (NGN)");
+
+      csvContent += "S/N," + headersList.join(",") + "\r\n";
+      
+      filteredInventoryData.forEach((m, idx) => {
         const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
-        csvContent += `"${m.name}","${m.genericName}","${m.manufacturer}","${m.category}","${m.type}","${m.expiryDate}",${qty},${m.purchasePrice * qty},${m.sellingPrice * qty}\r\n`;
+        const rowData: string[] = [];
+        if (inventoryCols.includes("name")) rowData.push(`"${m.name}"`, `"${m.genericName}"`);
+        if (inventoryCols.includes("category")) rowData.push(`"${m.category}"`);
+        if (inventoryCols.includes("stock")) rowData.push(`${qty}`);
+        if (inventoryCols.includes("cost")) rowData.push(`${m.purchasePrice}`);
+        if (inventoryCols.includes("retail")) rowData.push(`${m.sellingPrice}`);
+        if (inventoryCols.includes("totalCost")) rowData.push(`${m.purchasePrice * qty}`);
+        if (inventoryCols.includes("totalRetail")) rowData.push(`${m.sellingPrice * qty}`);
+        
+        csvContent += `${idx + 1},` + rowData.join(",") + "\r\n";
       });
 
-    } else if (reportType === "finance" || subReportProfile === "finance-ledger") {
-      csvContent += "Record ID,Date,Type,Category,Amount (NGN),Payment Method,Description\r\n";
-      filteredFinancesData.forEach(f => {
-        csvContent += `"${f.id}","${f.date}","${f.type}","${f.category}",${f.amount},"${f.paymentMethod}","${f.description}"\r\n`;
+    } else if (reportType === "finance") {
+      const headersList: string[] = [];
+      if (financeCols.includes("id")) headersList.push("Record ID");
+      if (financeCols.includes("date")) headersList.push("Date");
+      if (financeCols.includes("type")) headersList.push("Financial Type");
+      if (financeCols.includes("category")) headersList.push("Category");
+      if (financeCols.includes("desc")) headersList.push("Description");
+      if (financeCols.includes("amount")) headersList.push("Sum Amount (NGN)");
+
+      csvContent += "S/N," + headersList.join(",") + "\r\n";
+
+      filteredFinancesData.forEach((f, idx) => {
+        const rowData: string[] = [];
+        if (financeCols.includes("id")) rowData.push(`"${f.id}"`);
+        if (financeCols.includes("date")) rowData.push(`"${f.date}"`);
+        if (financeCols.includes("type")) rowData.push(`"${f.type}"`);
+        if (financeCols.includes("category")) rowData.push(`"${f.category}"`);
+        if (financeCols.includes("desc")) rowData.push(`"${f.description}"`);
+        if (financeCols.includes("amount")) rowData.push(`${f.type === "Income" ? "" : "-"}${f.amount}`);
+
+        csvContent += `${idx + 1},` + rowData.join(",") + "\r\n";
       });
 
-    } else if (reportType === "staff" || subReportProfile === "staff-ledger") {
-      csvContent += "Employee Name,Role,Assigned Branch,Salary (NGN),Sales Managed,Performance Score\r\n";
-      calculatedStaffData.forEach(s => {
-        const branchName = branches.find(b => b.id === s.branchId)?.name || s.branchId;
-        csvContent += `"${s.name}","${s.role}","${branchName}",${s.salary},${s.salesCount},${s.performanceScore}\r\n`;
+    } else if (reportType === "staff") {
+      const headersList: string[] = [];
+      if (staffCols.includes("name")) headersList.push("Employee Name");
+      if (staffCols.includes("role")) headersList.push("Official Role");
+      if (staffCols.includes("salary")) headersList.push("Salary (NGN)");
+      if (staffCols.includes("salesCount")) headersList.push("Sales Managed");
+      if (staffCols.includes("totalSales")) headersList.push("Sales Value (NGN)");
+      if (staffCols.includes("score")) headersList.push("Performance Score");
+
+      csvContent += "S/N," + headersList.join(",") + "\r\n";
+
+      calculatedStaffData.forEach((s, idx) => {
+        const rowData: string[] = [];
+        if (staffCols.includes("name")) rowData.push(`"${s.name}"`);
+        if (staffCols.includes("role")) rowData.push(`"${s.role}"`);
+        if (staffCols.includes("salary")) rowData.push(`${s.salary}`);
+        if (staffCols.includes("salesCount")) rowData.push(`${s.salesCount}`);
+        if (staffCols.includes("totalSales")) rowData.push(`${s.totalSalesValue}`);
+        if (staffCols.includes("score")) rowData.push(`${s.performanceScore}`);
+
+        csvContent += `${idx + 1},` + rowData.join(",") + "\r\n";
       });
     }
 
@@ -1106,16 +1162,232 @@ export default function ReportingCenterView({
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `pharmerp_${subReportProfile}_report_${dateFrom}_to_${dateTo}.csv`);
+    link.setAttribute("download", `pharmerp_${reportType}_${subReportProfile}_report_${dateFrom}_to_${dateTo}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // ==================== ELECTRONIC JSON EXPORT ====================
+  const handleExportJSON = () => {
+    let dataToExport: any[] = [];
+    if (reportType === "sales") {
+      if (subReportProfile === "ledger") {
+        dataToExport = filteredSalesTransactionsFiltered.map(row => {
+          const branchObj = branches.find(b => b.id === row.branchId);
+          const branchName = branchObj ? branchObj.name : row.branchId;
+          return {
+            sn: row.sn,
+            invoiceNumber: row.invoiceNumber,
+            medicineName: row.medicineName,
+            category: row.category,
+            quantity: row.quantity,
+            unitCost: row.unitCostPrice,
+            totalCost: row.totalCostPrice,
+            unitSelling: row.unitSellingPrice,
+            totalSelling: row.totalSellingPrice,
+            discount: row.discount,
+            balanceNett: row.balanceAfterDiscount,
+            paymentMethod: row.paymentMethod,
+            cashier: row.cashierName,
+            dateTime: row.date.replace("T", " ").substring(0, 16),
+            branch: branchName
+          };
+        });
+      } else if (subReportProfile === "top-selling") {
+        dataToExport = topSellingReportData;
+      } else if (subReportProfile === "slow-moving") {
+        dataToExport = slowMovingReportData;
+      } else if (subReportProfile === "dead-stock") {
+        dataToExport = deadStockReportData;
+      } else if (subReportProfile === "low-stock") {
+        dataToExport = lowStockReportData;
+      } else if (subReportProfile === "expiry") {
+        dataToExport = expiryReportData;
+      } else if (subReportProfile === "profit-margin") {
+        dataToExport = profitMarginReportData;
+      } else if (subReportProfile === "cashier-perf") {
+        dataToExport = cashierPerformanceReportData;
+      } else if (subReportProfile === "branch-perf") {
+        dataToExport = branchPerformanceReportData;
+      } else if (subReportProfile === "supplier-purchase") {
+        dataToExport = supplierPurchaseReportData;
+      } else if (subReportProfile === "customer-purchase") {
+        dataToExport = customerPurchaseReportData;
+      }
+    } else if (reportType === "inventory") {
+      dataToExport = filteredInventoryData.map(m => {
+        const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
+        const item: any = {};
+        if (inventoryCols.includes("name")) {
+          item.name = m.name;
+          item.genericName = m.genericName;
+        }
+        if (inventoryCols.includes("category")) item.category = m.category;
+        if (inventoryCols.includes("stock")) item.stock = qty;
+        if (inventoryCols.includes("cost")) item.purchasePrice = m.purchasePrice;
+        if (inventoryCols.includes("retail")) item.sellingPrice = m.sellingPrice;
+        if (inventoryCols.includes("totalCost")) item.totalCostValue = m.purchasePrice * qty;
+        if (inventoryCols.includes("totalRetail")) item.totalRetailValue = m.sellingPrice * qty;
+        return item;
+      });
+    } else if (reportType === "finance") {
+      dataToExport = filteredFinancesData.map(f => {
+        const item: any = {};
+        if (financeCols.includes("id")) item.id = f.id;
+        if (financeCols.includes("date")) item.date = f.date;
+        if (financeCols.includes("type")) item.type = f.type;
+        if (financeCols.includes("category")) item.category = f.category;
+        if (financeCols.includes("desc")) item.description = f.description;
+        if (financeCols.includes("amount")) item.amount = f.amount;
+        return item;
+      });
+    } else if (reportType === "staff") {
+      dataToExport = calculatedStaffData.map(s => {
+        const item: any = {};
+        if (staffCols.includes("name")) item.name = s.name;
+        if (staffCols.includes("role")) item.role = s.role;
+        if (staffCols.includes("salary")) item.salary = s.salary;
+        if (staffCols.includes("salesCount")) item.salesCount = s.salesCount;
+        if (staffCols.includes("totalSales")) item.totalSalesValue = s.totalSalesValue;
+        if (staffCols.includes("score")) item.performanceScore = s.performanceScore;
+        return item;
+      });
+    }
+
+    const jsonString = JSON.stringify(
+      {
+        business: businessSettings.businessName,
+        reportType,
+        subReportProfile,
+        dateFrom,
+        dateTo,
+        exportedAt: new Date().toISOString(),
+        recordsCount: dataToExport.length,
+        data: dataToExport
+      },
+      null,
+      2
+    );
+
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pharmerp_${reportType}_${subReportProfile}_export_${dateFrom}_to_${dateTo}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onAddActivityLog("Report Export", `Exported electronic JSON dataset for ${reportType} report.`);
+  };
+
+  // ==================== PLAIN TEXT TXT EXPORT ====================
+  const handleExportTXT = () => {
+    let txtContent = `====================================================\n`;
+    txtContent += `       ${businessSettings.businessName.toUpperCase()} AUDIT REPORT\n`;
+    txtContent += `====================================================\n`;
+    txtContent += `Report Type: ${reportType.toUpperCase()} (${subReportProfile})\n`;
+    txtContent += `Branch Scope: ${filterBranchId === "all" ? "Combined Area Network" : branches.find(b => b.id === filterBranchId)?.name || filterBranchId}\n`;
+    txtContent += `Date Range: ${dateFrom} to ${dateTo}\n`;
+    txtContent += `Exported: ${new Date().toLocaleString()}\n`;
+    txtContent += `----------------------------------------------------\n\n`;
+
+    if (reportType === "sales") {
+      if (subReportProfile === "ledger") {
+        txtContent += `Daily Sales Ledger (Itemized NAFDAC Compliance Ledger):\n`;
+        txtContent += `----------------------------------------------------------------------------------------------------\n`;
+        txtContent += `S/N | Medicine Name | Category | Qty | Cost | Total Cost | Sell | Total Sell | Discount | Balance nett | Method | Cashier | Branch\n`;
+        txtContent += `----------------------------------------------------------------------------------------------------\n`;
+        filteredSalesTransactionsFiltered.forEach((row: any) => {
+          const branchObj = branches.find(b => b.id === row.branchId);
+          const branchName = branchObj ? branchObj.name : row.branchId;
+          txtContent += `${row.sn} | ${row.medicineName} | ${row.category} | ${row.quantity} | ₦${row.unitCostPrice} | ₦${row.totalCostPrice} | ₦${row.unitSellingPrice} | ₦${row.totalSellingPrice} | -₦${row.discount} | ₦${row.balanceAfterDiscount} | ${row.paymentMethod} | ${row.cashierName} | ${branchName}\n`;
+        });
+        txtContent += `----------------------------------------------------------------------------------------------------\n`;
+        txtContent += `Grand Totals: Qty: ${reportTotals.quantitySum} | Total Cost: ₦${reportTotals.costPriceSum} | Total Selling: ₦${reportTotals.sellingPriceSum} | Discount: -₦${reportTotals.discountSum} | Net Balance: ₦${reportTotals.balanceSum} | Est Gross Profit: ₦${reportTotals.profitSum}\n`;
+      } else if (subReportProfile === "top-selling") {
+        txtContent += `Top Selling Medicines:\n`;
+        topSellingReportData.forEach((row, idx) => {
+          txtContent += `${idx + 1}. ${row.medicineName} | Category: ${row.category} | Sold Qty: ${row.quantity} | Revenue: ₦${row.revenue} | Profit: ₦${row.profit} | Supplier: ${row.supplier}\n`;
+        });
+      } else if (subReportProfile === "slow-moving") {
+        txtContent += `Slow Moving Medicines Report:\n`;
+        slowMovingReportData.forEach((row, idx) => {
+          txtContent += `${idx + 1}. ${row.medicineName} | Stock: ${row.stock} | Sold Units: ${row.totalSold} | Turnover: ${row.turnoverRate.toFixed(1)}% | Revenue: ₦${row.revenue}\n`;
+        });
+      } else {
+        txtContent += `Sales Ledger Overviews:\n`;
+        filteredSalesData.forEach((s, idx) => {
+          const elements: string[] = [];
+          if (salesCols.includes("invoice")) elements.push(`Invoice: ${s.invoiceNumber}`);
+          if (salesCols.includes("date")) elements.push(`Date: ${s.date.split("T")[0]}`);
+          if (salesCols.includes("customer")) elements.push(`Customer: ${s.customerName}`);
+          if (salesCols.includes("items")) elements.push(`Items: ${s.items.length}`);
+          if (salesCols.includes("total")) elements.push(`Total: NGN ${s.total.toLocaleString()}`);
+          if (salesCols.includes("method")) elements.push(`Method: ${s.paymentMethod}`);
+          txtContent += `${idx + 1}. ${elements.join(" | ")}\n`;
+        });
+      }
+    } else if (reportType === "inventory") {
+      txtContent += `Inventory Status:\n`;
+      filteredInventoryData.forEach((m, idx) => {
+        const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
+        const elements: string[] = [];
+        if (inventoryCols.includes("name")) elements.push(`Medicine: ${m.name} (${m.genericName})`);
+        if (inventoryCols.includes("category")) elements.push(`Category: ${m.category}`);
+        if (inventoryCols.includes("stock")) elements.push(`Stock: ${qty}`);
+        if (inventoryCols.includes("cost")) elements.push(`Cost: NGN ${m.purchasePrice}`);
+        if (inventoryCols.includes("retail")) elements.push(`Retail: NGN ${m.sellingPrice}`);
+        if (inventoryCols.includes("totalCost")) elements.push(`Total Cost: NGN ${(m.purchasePrice * qty).toLocaleString()}`);
+        if (inventoryCols.includes("totalRetail")) elements.push(`Total Retail: NGN ${(m.sellingPrice * qty).toLocaleString()}`);
+        txtContent += `${idx + 1}. ${elements.join(" | ")}\n`;
+      });
+    } else if (reportType === "finance") {
+      txtContent += `Finance Ledger:\n`;
+      filteredFinancesData.forEach((f, idx) => {
+        const elements: string[] = [];
+        if (financeCols.includes("id")) elements.push(`ID: ${f.id}`);
+        if (financeCols.includes("date")) elements.push(`Date: ${f.date}`);
+        if (financeCols.includes("type")) elements.push(`Type: ${f.type.toUpperCase()}`);
+        if (financeCols.includes("category")) elements.push(`Category: ${f.category}`);
+        if (financeCols.includes("amount")) elements.push(`Amount: NGN ${f.amount.toLocaleString()}`);
+        if (financeCols.includes("desc")) elements.push(`Details: ${f.description}`);
+        txtContent += `${idx + 1}. ${elements.join(" | ")}\n`;
+      });
+    } else if (reportType === "staff") {
+      txtContent += `Staff Roster performance:\n`;
+      calculatedStaffData.forEach((s, idx) => {
+        const elements: string[] = [];
+        if (staffCols.includes("name")) elements.push(`Staff: ${s.name}`);
+        if (staffCols.includes("role")) elements.push(`Role: ${s.role}`);
+        if (staffCols.includes("salary")) elements.push(`Salary: NGN ${s.salary.toLocaleString()}`);
+        if (staffCols.includes("salesCount")) elements.push(`Sales count: ${s.salesCount}`);
+        if (staffCols.includes("totalSales")) elements.push(`Sales value: NGN ${s.totalSalesValue.toLocaleString()}`);
+        if (staffCols.includes("score")) elements.push(`Score: ${s.performanceScore.toFixed(1)}/5.0`);
+        txtContent += `${idx + 1}. ${elements.join(" | ")}\n`;
+      });
+    }
+
+    txtContent += `\n====================================================\n`;
+    txtContent += `Certified by Federal Republic of Nigeria Pharmacy Board\n`;
+    txtContent += `====================================================\n`;
+
+    const blob = new Blob([txtContent], { type: "text/plain;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `pharmerp_${reportType}_report_${dateFrom}_to_${dateTo}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onAddActivityLog("Report Export", `Exported Plain Text (TXT) ledger document.`);
+  };
+
   // ==================== PRINT PREVIEW GENERATION ====================
-  const handlePrintTrigger = () => {
+  const handlePrintTrigger = (initialFormat: "pdf" | "csv" | "json" | "txt" = "pdf") => {
+    setExportFormat(initialFormat);
     setShowPrintModal(true);
-    onAddActivityLog("Report Export", `Initiated high-contrast printable audit document for ${reportType} report.`);
+    onAddActivityLog("Report Export", `Opened unified print & export manager in ${initialFormat.toUpperCase()} configuration.`);
   };
 
   const executePrint = () => {
@@ -2436,14 +2708,14 @@ export default function ReportingCenterView({
               {/* Download Buttons conforming to the theme */}
               <div className="space-y-2 mt-6">
                 <button
-                  onClick={handleExportCSV}
+                  onClick={() => handlePrintTrigger("csv")}
                   className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
                 >
                   <Download size={14} />
                   Export to Excel (CSV)
                 </button>
                 <button
-                  onClick={handlePrintTrigger}
+                  onClick={() => handlePrintTrigger("pdf")}
                   className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
                 >
                   <Printer size={14} />
@@ -3813,288 +4085,485 @@ export default function ReportingCenterView({
       )}
 
       {/* ======================================================== */}
-      {/*               PRINT PREVIEW MODAL LIGHTBOX                 */}
+      {/*         UNIFIED EXPORT & PRINT CUSTOMIZATION SUITE       */}
       {/* ======================================================== */}
       {showPrintModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full p-6 shadow-2xl border border-slate-350 space-y-6">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 text-slate-800">
+          <div className="bg-white rounded-2xl w-full max-w-7xl h-[92vh] flex flex-col md:flex-row overflow-hidden shadow-2xl border border-slate-300">
             
-            {/* Header info bar (hides when printable triggered) */}
-            <div className="flex items-center justify-between border-b border-rose-100 pb-3 bg-rose-50/50 p-3 rounded-lg print:hidden">
-              <div className="flex items-center gap-2 text-rose-800 text-xs font-bold">
-                <AlertTriangle size={15} className="text-rose-600" />
-                System ready for hard-copy standard page render. Press trigger options.
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={executePrint}
-                  className="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
-                >
-                  Confirm Print / Save PDF
-                </button>
-                <button
-                  onClick={() => setShowPrintModal(false)}
-                  className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold rounded-lg text-xs transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-
-            {/* PRINT CONTENTS TARGET WRAPPER */}
-            <div id="print-area" className="p-8 space-y-6 text-slate-950 font-sans bg-white border border-slate-300 rounded-lg">
-              
-              {/* Header Invoice banner */}
-              <div className="flex justify-between items-start border-b border-slate-300 pb-6">
+            {/* LEFT COLUMN: INTERACTIVE SETTINGS SIDEBAR */}
+            <div className="w-full md:w-[350px] bg-slate-55 border-b md:border-b-0 md:border-r border-slate-200 p-5 flex flex-col justify-between overflow-y-auto shrink-0 print:hidden">
+              <div className="space-y-5">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-white text-xs font-bold bg-slate-900 p-1.5 rounded-lg">PHARMA-ERP</span>
-                    <h2 className="text-xl font-black uppercase tracking-tight text-slate-900">Nigeria Hub Enterprise</h2>
+                  <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-tight flex items-center gap-1.5">
+                    <Settings size={16} className="text-emerald-500" />
+                    Export & Print Customizer
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Configure report formatting & serialization style</p>
+                </div>
+
+                <hr className="border-slate-200" />
+
+                {/* 1. FORMAT SELECTOR */}
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider block">1. Target Format</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { id: "pdf", label: "Printable Document", icon: "📑" },
+                      { id: "csv", label: "Excel CSV Feed", icon: "📊" },
+                      { id: "json", label: "Electronic JSON", icon: "💻" },
+                      { id: "txt", label: "Audit Plain TXT", icon: "📝" }
+                    ].map(fmt => (
+                      <button
+                        key={fmt.id}
+                        onClick={() => setExportFormat(fmt.id as any)}
+                        className={`p-2.5 rounded-lg text-left border transition-all flex flex-col cursor-pointer ${
+                          exportFormat === fmt.id
+                            ? "border-emerald-500 ring-2 ring-emerald-400/30 bg-white"
+                            : "border-slate-200 bg-white hover:bg-slate-100"
+                        }`}
+                      >
+                        <span className="text-sm mb-1">{fmt.icon}</span>
+                        <span className="text-[10px] font-bold text-slate-800">{fmt.label}</span>
+                      </button>
+                    ))}
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Primary pharmaceutical ERP and POS systems infrastructure.</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Clearing ID: AREA-LUTH-NET-2026</p>
                 </div>
-                <div className="text-right text-xs">
-                  <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">Document Certification</h3>
-                  <p className="font-mono mt-1 font-bold">DATE: June 11, 2026</p>
-                  <p className="text-slate-500">FILTER RANGE: {dateFrom} - {dateTo}</p>
-                  <p className="text-slate-500">BRANCH: {filterBranchId === "all" ? "Combined Area Network" : branches.find(b => b.id === filterBranchId)?.name}</p>
-                </div>
-              </div>
 
-              {/* Summary KPIs listing inside Print layout */}
-              <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                {reportType === "sales" && (
-                  <>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">SUM REVENUE</p>
-                      <p className="text-md font-bold text-slate-900">₦{salesSummaryKPIs.total.toLocaleString("en-US", { minimumFractionDigits: 1 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">ORDER TOTAL</p>
-                      <p className="text-md font-bold text-slate-900">{salesSummaryKPIs.count} Sales</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">AVG CHEKOUT</p>
-                      <p className="text-md font-bold text-slate-900">₦{salesSummaryKPIs.avgOrder.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">CASH VAL</p>
-                      <p className="text-md font-bold text-slate-900">₦{salesSummaryKPIs.cashTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                    </div>
-                  </>
-                )}
-                {reportType === "inventory" && (
-                  <>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">PRODUCTS</p>
-                      <p className="text-md font-bold text-slate-900">{inventorySummaryKPIs.totalItems} Items</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">WHOLESALE COST</p>
-                      <p className="text-md font-bold text-slate-900">₦{inventorySummaryKPIs.totalStockValueCost.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">RETAIL VALUE</p>
-                      <p className="text-md font-bold text-slate-900">₦{inventorySummaryKPIs.totalStockValueRetail.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">PROFIT PROJ.</p>
-                      <p className="text-md font-bold text-slate-900">₦{inventorySummaryKPIs.potentialMargin.toLocaleString()}</p>
-                    </div>
-                  </>
-                )}
-                {reportType === "finance" && (
-                  <>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">INCOME SUM</p>
-                      <p className="text-md font-bold text-slate-900 font-mono">₦{financesSummaryKPIs.totalIncome.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">EXPENSE OVERHEAD</p>
-                      <p className="text-md font-bold text-slate-900 font-mono">₦{financesSummaryKPIs.totalExpense.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">NET BALANCE</p>
-                      <p className={`text-md font-bold font-mono ${financesSummaryKPIs.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        ₦{financesSummaryKPIs.netProfit.toLocaleString()}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">MARGIN</p>
-                      <p className="text-md font-bold text-slate-900">{financesSummaryKPIs.profitMargin.toFixed(1)}%</p>
-                    </div>
-                  </>
-                )}
-                {reportType === "staff" && (
-                  <>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">ACTIVE ROSTER</p>
-                      <p className="text-md font-bold text-slate-900">{calculatedStaffData.length} Staff</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">MANAGED SALES</p>
-                      <p className="text-md font-bold text-slate-900 font-mono">₦{calculatedStaffData.reduce((sum, s) => sum + s.totalSalesValue, 0).toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">PROD SCORE</p>
-                      <p className="text-md font-bold text-slate-900">
-                        {(calculatedStaffData.reduce((sum, s) => sum + s.performanceScore, 0) / (calculatedStaffData.length || 1)).toFixed(1)} / 5.0
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[9px] uppercase font-bold text-slate-500">PAYROLL BURDEN</p>
-                      <p className="text-md font-bold text-slate-900 font-mono">₦{calculatedStaffData.reduce((sum, s) => sum + s.salary, 0).toLocaleString()}</p>
-                    </div>
-                  </>
-                )}
-              </div>
+                <hr className="border-slate-200/60" />
 
-              {/* Printable simple list */}
-              <div className="space-y-3">
-                <h3 className="text-[10px] tracking-wider uppercase font-extrabold text-slate-600">
-                  Certified Records Audit Trail Table
-                </h3>
+                {/* 2. PDF ONLY OPTIONS */}
+                {exportFormat === "pdf" && (
+                  <>
+                    {/* Orientation */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider block">2. Page Orientation</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setPrintOrientation("portrait")}
+                          className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            printOrientation === "portrait"
+                              ? "bg-slate-900 text-white border-slate-900"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          📱 Portrait Layout
+                        </button>
+                        <button
+                          onClick={() => setPrintOrientation("landscape")}
+                          className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            printOrientation === "landscape"
+                              ? "bg-slate-900 text-white border-slate-900"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          📟 Landscape Map
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="border border-slate-350 rounded overflow-hidden">
+                    {/* Density */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider block">3. Line Padding Density</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setPrintDensity("compact")}
+                          className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            printDensity === "compact"
+                              ? "bg-emerald-600 text-white border-emerald-600 font-extrabold"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          🗜️ High Compact
+                        </button>
+                        <button
+                          onClick={() => setPrintDensity("comfortable")}
+                          className={`py-1.5 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                            printDensity === "comfortable"
+                              ? "bg-emerald-600 text-white border-emerald-600 font-extrabold"
+                              : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                          }`}
+                        >
+                          📖 Balanced standard
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Section Visibility toggles */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider block">4. Target Leaflet Sheets Sections</label>
+                      <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
+                        <label className="flex items-center gap-2 text-xs text-slate-800 font-semibold cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={printShowNAFDAC}
+                            onChange={(e) => setPrintShowNAFDAC(e.target.checked)}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Federal Compliance Crest</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-800 font-semibold cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={printShowKPIs}
+                            onChange={(e) => setPrintShowKPIs(e.target.checked)}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Summary KPI Stats Cards</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-xs text-slate-800 font-semibold cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={printShowSignatures}
+                            onChange={(e) => setPrintShowSignatures(e.target.checked)}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>Dynamic Clearance Signatures</span>
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* 3. COLUMN CUSTOMIZER */}
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase font-black text-slate-500 tracking-wider block">
+                    {exportFormat === "pdf" ? "5." : "2."} Column Attribute Filters
+                  </label>
                   
                   {reportType === "sales" && (
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-slate-100 border-b border-slate-350">
-                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                          <th className="px-4 py-2">Invoice #</th>
-                          <th className="px-4 py-2">Date</th>
-                          <th className="px-4 py-2">Customer</th>
-                          <th className="px-4 py-2 text-right">Items</th>
-                          <th className="px-4 py-2 text-right">Discount</th>
-                          <th className="px-4 py-2 text-right">Grand Total</th>
-                          <th className="px-4 py-2 text-center">Receipt Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {filteredSalesData.map(s => (
-                          <tr key={s.id}>
-                            <td className="px-4 py-2 font-mono font-bold text-slate-800">{s.invoiceNumber}</td>
-                            <td className="px-4 py-2">{s.date.split("T")[0]}</td>
-                            <td className="px-4 py-2 font-medium">{s.customerName}</td>
-                            <td className="px-4 py-2 text-right">{s.items.length}</td>
-                            <td className="px-4 py-2 text-right">-₦{s.discount}</td>
-                            <td className="px-4 py-2 text-right font-bold">₦{s.total.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-center text-slate-500 font-bold">{s.paymentMethod}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      {[
+                        { id: "invoice", label: "Invoice Number" },
+                        { id: "date", label: "Transaction Date" },
+                        { id: "customer", label: "Patient" },
+                        { id: "items", label: "Product Count" },
+                        { id: "discount", label: "Discount Saved" },
+                        { id: "total", label: "Grand Total" },
+                        { id: "method", label: "Payment Type" }
+                      ].map(col => (
+                        <label key={col.id} className="flex items-center gap-2 text-xs text-slate-850 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={salesCols.includes(col.id)}
+                            onChange={() => {
+                              if (salesCols.includes(col.id)) {
+                                setSalesCols(salesCols.filter(x => x !== col.id));
+                              } else {
+                                setSalesCols([...salesCols, col.id]);
+                              }
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="font-semibold text-slate-700">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   )}
 
                   {reportType === "inventory" && (
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-slate-100 border-b border-slate-350">
-                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                          <th className="px-4 py-2">Medicine Profile</th>
-                          <th className="px-4 py-2">Category</th>
-                          <th className="px-4 py-2 text-right">Stock</th>
-                          <th className="px-4 py-2 text-right">Wholesale Cost</th>
-                          <th className="px-4 py-2 text-right">Retail price</th>
-                          <th className="px-4 py-2 text-right">Total Cost</th>
-                          <th className="px-4 py-2 text-right">Total Retail</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {filteredInventoryData.map(m => {
-                          const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
-                          return (
-                            <tr key={m.id}>
-                              <td className="px-4 py-2 font-bold text-slate-900">{m.name}</td>
-                              <td className="px-4 py-2">{m.category}</td>
-                              <td className="px-4 py-2 text-right font-bold">{qty} Units</td>
-                              <td className="px-4 py-2 text-right">₦{m.purchasePrice}</td>
-                              <td className="px-4 py-2 text-right font-semibold">₦{m.sellingPrice}</td>
-                              <td className="px-4 py-2 text-right">₦{(m.purchasePrice * qty).toLocaleString()}</td>
-                              <td className="px-4 py-2 text-right font-bold">₦{(m.sellingPrice * qty).toLocaleString()}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      {[
+                        { id: "name", label: "Medicine Profile & Gen" },
+                        { id: "category", label: "Category" },
+                        { id: "stock", label: "Current Stock Level" },
+                        { id: "cost", label: "Landed Unit Cost" },
+                        { id: "retail", label: "Retail Market Listing" },
+                        { id: "totalCost", label: "Carried Wholesale Cost" },
+                        { id: "totalRetail", label: "Est. Total Retail Value" }
+                      ].map(col => (
+                        <label key={col.id} className="flex items-center gap-2 text-xs text-slate-850 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={inventoryCols.includes(col.id)}
+                            onChange={() => {
+                              if (inventoryCols.includes(col.id)) {
+                                setInventoryCols(inventoryCols.filter(x => x !== col.id));
+                              } else {
+                                setInventoryCols([...inventoryCols, col.id]);
+                              }
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="font-semibold text-slate-700">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   )}
 
                   {reportType === "finance" && (
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-slate-100 border-b border-slate-350">
-                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                          <th className="px-4 py-2">ID Record</th>
-                          <th className="px-4 py-2">Date</th>
-                          <th className="px-4 py-2">Financial Type</th>
-                          <th className="px-4 py-2">Category Category</th>
-                          <th className="px-4 py-2">Description</th>
-                          <th className="px-4 py-2 text-right">Sum Amount</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {filteredFinancesData.map(f => (
-                          <tr key={f.id}>
-                            <td className="px-4 py-2 font-mono text-slate-600">{f.id}</td>
-                            <td className="px-4 py-2">{f.date}</td>
-                            <td className="px-4 py-2 font-bold uppercase">{f.type}</td>
-                            <td className="px-4 py-2 font-semibold">{f.category}</td>
-                            <td className="px-4 py-2 text-slate-500">{f.description}</td>
-                            <td className="px-4 py-2 text-right font-bold">
-                              {f.type === "Income" ? "" : "-"}₦{f.amount.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      {[
+                        { id: "id", label: "Ledger ID" },
+                        { id: "date", label: "Date" },
+                        { id: "type", label: "Type (Income/Expense)" },
+                        { id: "category", label: "Category" },
+                        { id: "desc", label: "Details" },
+                        { id: "amount", label: "Sum Total (NGN)" }
+                      ].map(col => (
+                        <label key={col.id} className="flex items-center gap-2 text-xs text-slate-850 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={financeCols.includes(col.id)}
+                            onChange={() => {
+                              if (financeCols.includes(col.id)) {
+                                setFinanceCols(financeCols.filter(x => x !== col.id));
+                              } else {
+                                setFinanceCols([...financeCols, col.id]);
+                              }
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="font-semibold text-slate-700">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   )}
 
                   {reportType === "staff" && (
-                    <table className="w-full text-left text-[11px]">
-                      <thead className="bg-slate-100 border-b border-slate-350">
-                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                          <th className="px-4 py-2">Member</th>
-                          <th className="px-4 py-2">Official Role</th>
-                          <th className="px-4 py-2 text-right">Salary (NGN)</th>
-                          <th className="px-4 py-2 text-right">Managed Checkouts</th>
-                          <th className="px-4 py-2 text-right">Managed Sales</th>
-                          <th className="px-4 py-2 text-right">Rating Index</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-200">
-                        {calculatedStaffData.map(s => (
-                          <tr key={s.id}>
-                            <td className="px-4 py-2 font-bold">{s.name}</td>
-                            <td className="px-4 py-2 text-slate-500">{s.role}</td>
-                            <td className="px-4 py-2 text-right font-mono">₦{s.salary.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right">{s.salesCount} sales</td>
-                            <td className="px-4 py-2 text-right font-mono">₦{s.totalSalesValue.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right font-bold">{s.performanceScore.toFixed(1)} / 5.0</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+                      {[
+                        { id: "name", label: "Employee" },
+                        { id: "role", label: "Official Role" },
+                        { id: "salary", label: "Monthly Gross Salary" },
+                        { id: "salesCount", label: "Dispatched Receipts" },
+                        { id: "totalSales", label: "Supervised Revenue" },
+                        { id: "score", label: "Quality Assessment Score" }
+                      ].map(col => (
+                        <label key={col.id} className="flex items-center gap-2 text-xs text-slate-850 cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={staffCols.includes(col.id)}
+                            onChange={() => {
+                              if (staffCols.includes(col.id)) {
+                                setStaffCols(staffCols.filter(x => x !== col.id));
+                              } else {
+                                setStaffCols([...staffCols, col.id]);
+                              }
+                            }}
+                            className="rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span className="font-semibold text-slate-700">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
                   )}
 
                 </div>
               </div>
 
-              {/* Signature Blocks and clearance standard footer */}
-              <div className="pt-12 grid grid-cols-2 gap-12 font-mono text-[10px] text-slate-600 border-t border-slate-300">
-                <div>
-                  <p className="font-bold text-slate-800 uppercase">1. SYSTEMS OPERATOR CLEARANCE SIGNATURE</p>
-                  <div className="border-b border-slate-300 h-10 mt-2" />
-                  <p className="mt-1">Dr. Jadan Alhaji (Super Admin Representative)</p>
-                  <p className="text-slate-400">Timestamp: {new Date().toISOString()}</p>
+              {/* ACTION TOGGLE ACTIONS AT FOOTER OF SIDEBAR */}
+              <div className="pt-4 border-t border-slate-200 space-y-2">
+                <button
+                  onClick={() => {
+                    if (exportFormat === "pdf") {
+                      executePrint();
+                    } else if (exportFormat === "csv") {
+                      handleExportCSV();
+                      setShowPrintModal(false);
+                    } else if (exportFormat === "json") {
+                      handleExportJSON();
+                      setShowPrintModal(false);
+                    } else if (exportFormat === "txt") {
+                      handleExportTXT();
+                      setShowPrintModal(false);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-850 text-white font-extrabold py-3 px-4 rounded-xl text-xs transition-all shadow-md cursor-pointer uppercase tracking-wider"
+                >
+                  {exportFormat === "pdf" ? "🖨️ Open Print Wizard" : "💾 Download file output"}
+                </button>
+                <button
+                  onClick={() => setShowPrintModal(false)}
+                  className="w-full py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                >
+                  Close & Cancel
+                </button>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: INTERACTIVE DOCUMENT VIEWPORT */}
+            <div className="flex-1 overflow-y-auto bg-slate-200 p-6 flex justify-center text-slate-900 print-main-content">
+              <div 
+                className={`bg-white shadow-xl border border-slate-250 transition-all overflow-hidden ${
+                  printOrientation === "landscape" 
+                    ? "w-full max-w-[297mm] p-6 sm:p-10" 
+                    : "w-[210mm] max-w-full p-6 sm:p-10"
+                }`}
+              >
+                
+                {/* Header warning info bar inside Document workspace (hidden during print) */}
+                <div className="flex items-center justify-between border-b border-rose-100 pb-3 mb-6 bg-rose-50/50 p-3 rounded-lg print:hidden">
+                  <div className="flex items-center gap-2 text-rose-800 text-[11px] font-bold">
+                    <AlertTriangle size={14} className="text-rose-600" />
+                    Viewing dynamic document simulator. Ready with {exportFormat.toUpperCase()} config.
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-slate-800 uppercase">2. BOARD OF CLINICS AUDIT SEAL APPROVAL</p>
-                  <div className="border-b border-slate-300 h-10 mt-2" />
-                  <p className="mt-1">Federal Republic of Nigeria Pharmacy Compliance board</p>
-                  <p className="text-slate-400">Security Clearance hash: SHA-ENC-2026-NUB</p>
+
+                {/* THE PRINT CONTENTS TARGET WRAPPER */}
+                <div 
+                  id="print-area" 
+                  className={`space-y-6 text-slate-950 font-sans bg-white ${
+                    printDensity === "compact" 
+                      ? "[&_td]:!py-1 [&_td]:!px-2.5 [&_td]:!text-[10px] [&_th]:!py-1 [&_th]:!px-2.5 [&_th]:!text-[9px]" 
+                      : "[&_td]:!py-2 [&_td]:!px-3 [&_td]:!text-[11px] [&_th]:!py-2 [&_th]:!px-3 [&_th]:!text-[10px]"
+                  }`}
+                >
+                  
+                  {/* Header Compliance Banner */}
+                  {printShowNAFDAC ? (
+                    <div className="flex justify-between items-start border-b border-slate-300 pb-6">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-white text-xs font-bold bg-slate-900 p-1.5 rounded-lg">PHARMA-ERP</span>
+                          <h2 className="text-xl font-black uppercase tracking-tight text-slate-900 font-sans">Nigeria Hub Enterprise</h2>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">Primary pharmaceutical ERP and POS systems infrastructure.</p>
+                        <p className="text-[10px] text-slate-400 mt-1 font-semibold">Clearing ID: AREA-LUTH-NET-2026 | NAFDAC REG: FDA-NIG-7731-X</p>
+                      </div>
+                      <div className="text-right text-xs">
+                        <h3 className="font-bold text-slate-800 uppercase tracking-wider text-[9px]">Document Certification</h3>
+                        <p className="font-mono mt-1 font-bold">DATE: June 12, 2026</p>
+                        <p className="text-slate-500">FILTER RANGE: {dateFrom} - {dateTo}</p>
+                        <p className="text-slate-500 uppercase">SCOPE: {filterBranchId === "all" ? "Combined Area Network" : branches.find(b => b.id === filterBranchId)?.name}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center border-b border-slate-300 pb-4">
+                      <div>
+                        <h2 className="text-lg font-bold text-slate-950 uppercase">{businessSettings.businessName} Audit Report</h2>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Automated compliance ledger output</p>
+                      </div>
+                      <div className="text-right text-[10px] text-slate-600 font-mono">
+                        <p>Date Range: {dateFrom} to {dateTo}</p>
+                        <p>Scope: {filterBranchId === "all" ? "Combined" : branches.find(b => b.id === filterBranchId)?.name}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary KPIs listing inside Print layout */}
+                  {printShowKPIs && (
+                    <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                      {reportType === "sales" && (
+                        <>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">SUM REVENUE</p>
+                            <p className="text-sm font-bold text-slate-900">₦{salesSummaryKPIs.total.toLocaleString("en-US", { minimumFractionDigits: 1 })}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">ORDER TOTAL</p>
+                            <p className="text-sm font-bold text-slate-900">{salesSummaryKPIs.count} Sales</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">AVG CHECKOUT</p>
+                            <p className="text-sm font-bold text-slate-900">₦{salesSummaryKPIs.avgOrder.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">CASH VAL</p>
+                            <p className="text-sm font-bold text-slate-900 font-mono">₦{salesSummaryKPIs.cashTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                          </div>
+                        </>
+                      )}
+                      {reportType === "inventory" && (
+                        <>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">PRODUCTS</p>
+                            <p className="text-sm font-bold text-slate-900">{inventorySummaryKPIs.totalItems} Items</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">WHOLESALE COST</p>
+                            <p className="text-sm font-bold text-slate-900">₦{inventorySummaryKPIs.totalStockValueCost.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">RETAIL VALUE</p>
+                            <p className="text-sm font-bold text-slate-900">₦{inventorySummaryKPIs.totalStockValueRetail.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">PROFIT PROJ.</p>
+                            <p className="text-sm font-bold text-slate-900">₦{inventorySummaryKPIs.potentialMargin.toLocaleString()}</p>
+                          </div>
+                        </>
+                      )}
+                      {reportType === "finance" && (
+                        <>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">INCOME SUM</p>
+                            <p className="text-sm font-bold text-slate-900 font-mono">₦{financesSummaryKPIs.totalIncome.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-550">EXPENSE OVERHEAD</p>
+                            <p className="text-sm font-bold text-slate-900 font-mono">₦{financesSummaryKPIs.totalExpense.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500 font-mono">NET BALANCE</p>
+                            <p className={`text-sm font-bold font-mono ${financesSummaryKPIs.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                              ₦{financesSummaryKPIs.netProfit.toLocaleString()}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">MARGIN</p>
+                            <p className="text-sm font-bold text-slate-900">{financesSummaryKPIs.profitMargin.toFixed(1)}%</p>
+                          </div>
+                        </>
+                      )}
+                      {reportType === "staff" && (
+                        <>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-550 font-mono font-sans">ACTIVE ROSTER</p>
+                            <p className="text-sm font-bold text-slate-900">{calculatedStaffData.length} Staff</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">MANAGED SALES</p>
+                            <p className="text-sm font-bold text-slate-900 font-mono">₦{calculatedStaffData.reduce((sum, s) => sum + s.totalSalesValue, 0).toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500 font-mono">PROD SCORE</p>
+                            <p className="text-sm font-bold text-slate-900">
+                              {(calculatedStaffData.reduce((sum, s) => sum + s.performanceScore, 0) / (calculatedStaffData.length || 1)).toFixed(1)} / 5.0
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[9px] uppercase font-bold text-slate-500">PAYROLL BURDEN</p>
+                            <p className="text-sm font-bold text-slate-900 font-mono">₦{calculatedStaffData.reduce((sum, s) => sum + s.salary, 0).toLocaleString()}</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Printable dynamic roster data tables */}
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] tracking-wider uppercase font-extrabold text-slate-600 block">
+                      Certified Audit Ledger Trail
+                    </h3>
+
+                    <div className="border border-slate-355 rounded overflow-hidden">
+                      {renderReportTableContent(true)}
+                    </div>
+                  </div>
+
+                  {/* Signature Blocks and clearance standard footer */}
+                  {printShowSignatures && (
+                    <div className="pt-12 grid grid-cols-2 gap-12 font-mono text-[10px] text-slate-600 border-t border-slate-350 bg-white">
+                      <div>
+                        <p className="font-bold text-slate-800 uppercase">1. SYSTEMS OPERATOR CLEARANCE SIGNATURE</p>
+                        <div className="border-b border-slate-300 h-10 mt-2" />
+                        <p className="mt-1 font-semibold text-slate-900">Dr. Jadan Alhaji (Super Admin Representative)</p>
+                        <p className="text-slate-400">Timestamp: {new Date().toISOString()}</p>
+                      </div>
+                      <div>
+                        <p className="font-bold text-slate-800 uppercase">2. BOARD OF CLINICS AUDIT SEAL APPROVAL</p>
+                        <div className="border-b border-slate-300 h-10 mt-2" />
+                        <p className="mt-1 font-semibold text-slate-900">Federal Republic of Nigeria Pharmacy Compliance board</p>
+                        <p className="text-slate-400">Security Clearance hash: SHA-ENC-2026-NUB</p>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
-
             </div>
+
           </div>
         </div>
       )}

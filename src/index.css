@@ -193,3 +193,66 @@ body {
   background-color: rgba(16, 185, 129, 0.1) !important;
   color: #34d399 !important;
 }
+
+/* Print-Specific Stylesheet Overrides */
+@media print {
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+  
+  /* Hide every page element except our designated print viewport area */
+  body > *:not(.fixed) {
+    display: none !important;
+  }
+  
+  .fixed {
+    position: absolute !important;
+    inset: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  
+  /* Hide the modal's left settings panel and top action bars */
+  .print\:hidden,
+  .print-settings-sidebar {
+    display: none !important;
+  }
+
+  .print-main-content {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    background: white !important;
+  }
+
+  #print-area {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+
+  /* Support paper margins dynamically */
+  @page {
+    size: auto;
+    margin: 12mm 15mm 12mm 15mm;
+  }
+}
+
