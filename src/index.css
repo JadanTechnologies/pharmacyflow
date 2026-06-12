@@ -305,6 +305,45 @@ body {
     gap: 12px !important;
   }
 
+  /* Force all modal wrappers to overflow visibly during print to prevent truncated report contents */
+  .fixed.inset-0, 
+  .fixed.inset-0 > div,
+  .print-main-content,
+  .print-main-content > div,
+  #print-area {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Ensure all truncated cells or overflowing labels are fully visible and readable on paper */
+  #print-area td, 
+  #print-area th, 
+  #print-area span, 
+  #print-area div, 
+  #print-area p {
+    text-overflow: clip !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: visible !important;
+    max-width: none !important;
+    text-overflow: unset !important;
+  }
+
+  #print-area table {
+    table-layout: auto !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
   @page {
     size: auto;
     margin: 15mm;

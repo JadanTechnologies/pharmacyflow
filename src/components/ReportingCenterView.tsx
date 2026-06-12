@@ -2726,22 +2726,31 @@ export default function ReportingCenterView({
               </div>
 
               {/* Download Buttons conforming to the theme */}
-              <div className="space-y-2 mt-6">
-                <button
-                  onClick={() => handlePrintTrigger("csv")}
-                  className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
-                >
-                  <Download size={14} />
-                  Export to Excel (CSV)
-                </button>
-                <button
-                  onClick={() => handlePrintTrigger("pdf")}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
-                >
-                  <Printer size={14} />
-                  Render Printable PDF
-                </button>
-              </div>
+              {reportType === "sales" ? (
+                <div className="space-y-2 mt-6">
+                  <button
+                    onClick={() => handlePrintTrigger("csv")}
+                    className="w-full flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+                  >
+                    <Download size={14} />
+                    Export to Excel (CSV)
+                  </button>
+                  <button
+                    onClick={() => handlePrintTrigger("pdf")}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-sm"
+                  >
+                    <Printer size={14} />
+                    Render Printable PDF
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <Printer size={16} className="mx-auto text-slate-400 mb-1.5" />
+                  <p className="text-[10px] text-slate-500 font-bold leading-normal">
+                    Compliance rendering and printing are exclusive to the Itemized Compliance Ledger (Sales Report).
+                  </p>
+                </div>
+              )}
             </div>
 
           </div>
@@ -2765,39 +2774,45 @@ export default function ReportingCenterView({
                 </span>
 
                 {/* Highly prominent and accessible Print & Export tools directly in the report area */}
-                <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl border border-slate-200">
-                  <button
-                    onClick={() => handlePrintTrigger("csv")}
-                    className="flex items-center gap-1.5 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-250 shadow-sm"
-                    title="Export the active report table into Excel (CSV) format"
-                  >
-                    <Download size={12} className="text-emerald-500 font-bold" />
-                    <span>Export CSV</span>
-                  </button>
-                  <button
-                    onClick={() => handlePrintTrigger("pdf")}
-                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-950 shadow-sm"
-                    title="Open print layout settings to output high-quality custom PDF"
-                  >
-                    <Printer size={12} className="text-emerald-400 font-bold" />
-                    <span>Print PDF</span>
-                  </button>
-                  <button
-                    onClick={() => handlePrintTrigger("txt")}
-                    className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
-                    title="Save current report as TXT"
-                  >
-                    <FileText size={11} className="text-slate-500" />
-                    <span>TXT</span>
-                  </button>
-                  <button
-                    onClick={() => handlePrintTrigger("json")}
-                    className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
-                    title="Copy or export structural JSON schema"
-                  >
-                    <span>JSON</span>
-                  </button>
-                </div>
+                {reportType === "sales" ? (
+                  <div className="flex items-center gap-1 bg-slate-200/60 p-1 rounded-xl border border-slate-200">
+                    <button
+                      onClick={() => handlePrintTrigger("csv")}
+                      className="flex items-center gap-1.5 bg-white hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-250 shadow-sm"
+                      title="Export the active report table into Excel (CSV) format"
+                    >
+                      <Download size={12} className="text-emerald-500 font-bold" />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      onClick={() => handlePrintTrigger("pdf")}
+                      className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold px-3 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-950 shadow-sm"
+                      title="Open print layout settings to output high-quality custom PDF"
+                    >
+                      <Printer size={12} className="text-emerald-400 font-bold" />
+                      <span>Print PDF</span>
+                    </button>
+                    <button
+                      onClick={() => handlePrintTrigger("txt")}
+                      className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
+                      title="Save current report as TXT"
+                    >
+                      <FileText size={11} className="text-slate-500" />
+                      <span>TXT</span>
+                    </button>
+                    <button
+                      onClick={() => handlePrintTrigger("json")}
+                      className="flex items-center gap-1 bg-white hover:bg-slate-100 text-slate-600 font-bold px-2.5 py-1.5 rounded-lg text-[10px] transition-all cursor-pointer border border-slate-255"
+                      title="Copy or export structural JSON schema"
+                    >
+                      <span>JSON</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[10px] text-slate-500 font-bold italic bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg">
+                    📊 Administrative Stats (Non-printable)
+                  </span>
+                )}
               </div>
             </div>
 
