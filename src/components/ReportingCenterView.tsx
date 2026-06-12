@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { 
   TrendingUp, ShoppingCart, Users, AlertTriangle, Building, 
-  Layers, Package, Calendar, DollarSign, ShieldAlert, FileText,
+  Layers, Package, Calendar, DollarSign, ShieldAlert, FileText, Grid, Activity, ChevronDown, ChevronRight,
   Download, Printer, UserCheck, Key, ToggleLeft, ToggleRight, 
   Trash2, Play, Search, Eye, Filter, RefreshCw, Star, ArrowUpRight, ArrowDownRight,
   QrCode, Copy, Check, Send, Smartphone, MessageSquare, Settings
@@ -70,21 +70,20 @@ export default function ReportingCenterView({
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // ADVANCED SUB-REPORTS & DETAILED FILTERS
-  const [subReportProfile, setSubReportProfile] = useState<string>("transaction-details");
+  const [subReportProfile, setSubReportProfile] = useState<string>("ledger");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterCashier, setFilterCashier] = useState("all");
   const [filterMedicineName, setFilterMedicineName] = useState("all");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState("all");
   const [filterSupplier, setFilterSupplier] = useState("all");
-  const [filterStore, setFilterStore] = useState("all");
   const [filterMinProfit, setFilterMinProfit] = useState("all");
   const [sortField, setSortField] = useState<string>("sn");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
-    if (reportType === "sales") setSubReportProfile("transaction-details");
+    if (reportType === "sales") setSubReportProfile("ledger");
     else if (reportType === "inventory") setSubReportProfile("valuation");
     else if (reportType === "finance") setSubReportProfile("finance-ledger");
     else if (reportType === "staff") setSubReportProfile("staff-ledger");
@@ -188,10 +187,6 @@ export default function ReportingCenterView({
     return Array.from(new Set(medicines.map(m => m.manufacturer).filter(Boolean)));
   }, [medicines]);
 
-  const uniqueStores = useMemo(() => {
-    return Array.from(new Set(medicines.map(m => m.storeLocation).filter(Boolean)));
-  }, [medicines]);
-
   // ==================== FILTERING LOGIC ====================
   // Helper: check if a date is between From and To
   const isWithinDateRange = (dateStr: string) => {
@@ -248,16 +243,18 @@ export default function ReportingCenterView({
   // Filtered flattened sales
   const filteredSalesTransactionsFiltered = useMemo(() => {
     return flattenedSalesTransactions.filter(item => {
+      // Basic Filters
       const matchBranch = filterBranchId === "all" || item.branchId === filterBranchId;
       const matchDate = isWithinDateRange(item.date);
       const matchCategory = selectedCategory === "all" || item.category === selectedCategory;
 
+      // Advanced Filters
       const matchCashier = filterCashier === "all" || item.cashierName === filterCashier;
       const matchMedicine = filterMedicineName === "all" || item.medicineName === filterMedicineName;
       const matchPayMethod = filterPaymentMethod === "all" || item.paymentMethod === filterPaymentMethod;
       const matchSupplier = filterSupplier === "all" || item.supplier === filterSupplier;
-      const matchStore = filterStore === "all" || true;
 
+      // Search Query
       const matchSearch = !searchQuery ? true : (
         item.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.medicineName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -267,15 +264,16 @@ export default function ReportingCenterView({
         item.supplier.toLowerCase().includes(searchQuery.toLowerCase())
       );
 
+      // Minimum Profit Constraint (flagger)
       let matchMinProfit = true;
       if (filterMinProfit !== "all") {
         const threshold = parseFloat(filterMinProfit);
         matchMinProfit = item.profit < threshold;
       }
 
-      return matchBranch && matchDate && matchCategory && matchCashier && matchMedicine && matchPayMethod && matchSupplier && matchStore && matchSearch && matchMinProfit;
+      return matchBranch && matchDate && matchCategory && matchCashier && matchMedicine && matchPayMethod && matchSupplier && matchSearch && matchMinProfit;
     });
-  }, [flattenedSalesTransactions, filterBranchId, dateFrom, dateTo, selectedCategory, filterCashier, filterMedicineName, filterPaymentMethod, filterSupplier, filterStore, searchQuery, filterMinProfit]);
+  }, [flattenedSalesTransactions, filterBranchId, dateFrom, dateTo, selectedCategory, filterCashier, filterMedicineName, filterPaymentMethod, filterSupplier, searchQuery, filterMinProfit]);
 
   // Filtered Sales Report Data (Original single-order array maintained for backwards compat)
   const filteredSalesData = useMemo(() => {
@@ -642,50 +640,6 @@ export default function ReportingCenterView({
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [filteredSalesData]);
 
-  const topMedicinesChartData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredSalesTransactionsFiltered.forEach(tx => {
-      const key = tx.medicineName;
-      map[key] = (map[key] || 0) + tx.quantity;
-    });
-    return Object.entries(map)
-      .map(([name, quantity]) => ({ name, quantity }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 8);
-  }, [filteredSalesTransactionsFiltered]);
-
-  const categoryChartData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredSalesTransactionsFiltered.forEach(tx => {
-      const key = tx.category;
-      map[key] = (map[key] || 0) + tx.balanceAfterDiscount;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredSalesTransactionsFiltered]);
-
-  const branchChartData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredSalesTransactionsFiltered.forEach(tx => {
-      const bName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-      map[bName] = (map[bName] || 0) + tx.balanceAfterDiscount;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredSalesTransactionsFiltered, branches]);
-
-  const paymentMethodChartData = useMemo(() => {
-    const map: Record<string, number> = {};
-    filteredSalesTransactionsFiltered.forEach(tx => {
-      map[tx.paymentMethod] = (map[tx.paymentMethod] || 0) + tx.balanceAfterDiscount;
-    });
-    return Object.entries(map)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [filteredSalesTransactionsFiltered]);
-
   const inventoryCategoryChartData = useMemo(() => {
     const categoriesSum: { [cat: string]: number } = {};
     filteredInventoryData.forEach(m => {
@@ -723,6 +677,80 @@ export default function ReportingCenterView({
 
     return { total, count, avgOrder, cashTotal, transferTotal, digitalTotal };
   }, [filteredSalesData]);
+
+  // ADVANCED SALES ANALYTICS COMPUTATIONS (FROM FLATTENED & FILTERED PATH)
+  const distinctInvoicesCount = useMemo(() => {
+    return new Set(filteredSalesTransactionsFiltered.map(tx => tx.invoiceNumber)).size;
+  }, [filteredSalesTransactionsFiltered]);
+
+  const totalRevenue = useMemo(() => {
+    return filteredSalesTransactionsFiltered.reduce((sum, tx) => sum + tx.balanceAfterDiscount, 0);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const totalProfit = useMemo(() => {
+    return filteredSalesTransactionsFiltered.reduce((sum, tx) => sum + tx.profit, 0);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const totalQtySold = useMemo(() => {
+    return filteredSalesTransactionsFiltered.reduce((sum, tx) => sum + tx.quantity, 0);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const totalDiscounts = useMemo(() => {
+    return filteredSalesTransactionsFiltered.reduce((sum, tx) => sum + tx.discount, 0);
+  }, [filteredSalesTransactionsFiltered]);
+
+  const avgBasketValue = useMemo(() => {
+    return distinctInvoicesCount > 0 ? totalRevenue / distinctInvoicesCount : 0;
+  }, [totalRevenue, distinctInvoicesCount]);
+
+  const dailySalesChartData = useMemo(() => {
+    const dayMap: Record<string, { date: string; revenue: number; profit: number }> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      const key = tx.date.split("T")[0];
+      if (!dayMap[key]) {
+        dayMap[key] = { date: key, revenue: 0, profit: 0 };
+      }
+      dayMap[key].revenue += tx.balanceAfterDiscount;
+      dayMap[key].profit += tx.profit;
+    });
+    return Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredSalesTransactionsFiltered]);
+
+  const topMedicinesChartData = useMemo(() => {
+    return topSellingReportData.slice(0, 5).map(m => ({
+      name: m.medicineName,
+      quantity: m.quantity,
+      revenue: m.revenue
+    }));
+  }, [topSellingReportData]);
+
+  const categoryPieChartData = useMemo(() => {
+    const catMap: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      catMap[tx.category] = (catMap[tx.category] || 0) + tx.balanceAfterDiscount;
+    });
+    return Object.entries(catMap).map(([name, value]) => ({ name, value }));
+  }, [filteredSalesTransactionsFiltered]);
+
+  const branchSalesChartData = useMemo(() => {
+    return branches.map(br => {
+      const salesVolume = filteredSalesTransactionsFiltered
+        .filter(tx => tx.branchId === br.id)
+        .reduce((sum, tx) => sum + tx.balanceAfterDiscount, 0);
+      return {
+        name: br.name,
+        revenue: salesVolume
+      };
+    });
+  }, [branches, filteredSalesTransactionsFiltered]);
+
+  const paymentMethodPieData = useMemo(() => {
+    const payMap: Record<string, number> = {};
+    filteredSalesTransactionsFiltered.forEach(tx => {
+      payMap[tx.paymentMethod] = (payMap[tx.paymentMethod] || 0) + tx.balanceAfterDiscount;
+    });
+    return Object.entries(payMap).map(([name, value]) => ({ name, value }));
+  }, [filteredSalesTransactionsFiltered]);
 
   const inventorySummaryKPIs = useMemo(() => {
     let totalItems = 0;
@@ -773,7 +801,6 @@ export default function ReportingCenterView({
   // 1. Get raw current dataset
   const currentRawDataList = useMemo(() => {
     switch (subReportProfile) {
-      case "transaction-details":
       case "ledger":
         return filteredSalesTransactionsFiltered;
       case "top-selling":
@@ -786,6 +813,8 @@ export default function ReportingCenterView({
         return lowStockReportData;
       case "expiry":
         return expiryReportData;
+      case "profit-margin":
+        return profitMarginReportData;
       case "cashier-perf":
         return cashierPerformanceReportData;
       case "branch-perf":
@@ -794,25 +823,108 @@ export default function ReportingCenterView({
         return supplierPurchaseReportData;
       case "customer-purchase":
         return customerPurchaseReportData;
-      case "profit-margin":
-        return profitMarginReportData;
       default:
+        if (reportType === "inventory") return filteredInventoryData;
+        if (reportType === "finance") return filteredFinancesData;
+        if (reportType === "staff") return calculatedStaffData;
         return [];
     }
   }, [
     subReportProfile,
+    reportType,
     filteredSalesTransactionsFiltered,
     topSellingReportData,
     slowMovingReportData,
     deadStockReportData,
     lowStockReportData,
     expiryReportData,
+    profitMarginReportData,
     cashierPerformanceReportData,
     branchPerformanceReportData,
     supplierPurchaseReportData,
     customerPurchaseReportData,
-    profitMarginReportData
+    filteredInventoryData,
+    filteredFinancesData,
+    calculatedStaffData
   ]);
+
+  // Calculation of Grand Totals for the dynamic table footer matching currentRawDataList (unpaginated whole dataset)
+  const reportTotals = useMemo(() => {
+    let quantitySum = 0;
+    let costPriceSum = 0;
+    let sellingPriceSum = 0;
+    let discountSum = 0;
+    let balanceSum = 0;
+    let profitSum = 0;
+    
+    // Auxiliary counts for report-specific aggregates
+    let customAgg1 = 0; // standard custom counters
+    let customAgg2 = 0;
+    let customAgg3 = 0;
+
+    currentRawDataList.forEach((row: any) => {
+      if (subReportProfile === "ledger") {
+        quantitySum += row.quantity || 0;
+        costPriceSum += row.totalCostPrice || 0;
+        sellingPriceSum += row.totalSellingPrice || 0;
+        discountSum += row.discount || 0;
+        balanceSum += row.balanceAfterDiscount || 0;
+        profitSum += row.profit || 0;
+      } else if (subReportProfile === "top-selling") {
+        quantitySum += row.quantity || 0;
+        balanceSum += row.revenue || 0;
+        discountSum += row.discount || 0;
+        profitSum += row.profit || 0;
+      } else if (subReportProfile === "slow-moving") {
+        quantitySum += row.stock || 0;
+        customAgg1 += row.totalSold || 0;
+        balanceSum += row.revenue || 0;
+      } else if (subReportProfile === "dead-stock") {
+        quantitySum += row.stock || 0;
+        costPriceSum += row.costValue || 0;
+        sellingPriceSum += row.retailValue || 0;
+      } else if (subReportProfile === "low-stock") {
+        quantitySum += row.currentStock || 0;
+        customAgg1 += row.deficit || 0;
+        costPriceSum += row.suggestedCost || 0;
+      } else if (subReportProfile === "expiry") {
+        quantitySum += row.stock || 0;
+        costPriceSum += row.wasteValue || 0;
+      } else if (subReportProfile === "profit-margin") {
+        quantitySum += row.stock || 0;
+        profitSum += row.potentialProfit || 0;
+      } else if (subReportProfile === "cashier-perf") {
+        customAgg1 += row.count || 0;
+        balanceSum += row.revenue || 0;
+      } else if (subReportProfile === "branch-perf") {
+        customAgg1 += row.totalSalesCount || 0;
+        balanceSum += row.totalRevenue || 0;
+        costPriceSum += row.costValue || 0;
+        profitSum += row.netProfit || 0;
+      } else if (subReportProfile === "supplier-purchase") {
+        customAgg1 += row.medicinesCount || 0;
+        costPriceSum += row.costEstimate || 0;
+        balanceSum += row.outstandingBalance || 0;
+      } else if (subReportProfile === "customer-purchase") {
+        customAgg1 += row.count || 0;
+        balanceSum += row.salesVolume || 0;
+        customAgg2 += row.points || 0;
+        customAgg3 += row.walletBalance || 0;
+      }
+    });
+
+    return {
+      quantitySum,
+      costPriceSum,
+      sellingPriceSum,
+      discountSum,
+      balanceSum,
+      profitSum,
+      customAgg1,
+      customAgg2,
+      customAgg3
+    };
+  }, [currentRawDataList, subReportProfile]);
 
   // 2. Sort current raw dataset (with full-strength dynamic type casting)
   const sortedAndPaginatedData = useMemo(() => {
@@ -884,8 +996,8 @@ export default function ReportingCenterView({
     csvContent += `"Date Range","${dateFrom} to ${dateTo}"\r\n`;
     csvContent += `"Exported Timestamp","${new Date().toLocaleString()}"\r\n\r\n`;
 
-    if (subReportProfile === "transaction-details" || subReportProfile === "ledger") {
-      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date & Time,Branch Name\r\n";
+    if (subReportProfile === "ledger") {
+      csvContent += "S/N,Invoice No,Medicine Name,Category,Quantity,Unit Cost Price (NGN),Total Cost Price (NGN),Unit Selling Price (NGN),Total Selling Price (NGN),Discount Allocated (NGN),Balance After Discount (NGN),Nett Profit (NGN),Payment Method,Cashier,Date,Branch\r\n";
       let totalQty = 0;
       let totalCost = 0;
       let totalSell = 0;
@@ -902,11 +1014,12 @@ export default function ReportingCenterView({
         totalProfit += tx.profit;
 
         const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${new Date(tx.date).toLocaleString()}","${branchName}"`;
+        const line = `${idx + 1},"${tx.invoiceNumber}","${tx.medicineName}","${tx.category}",${tx.quantity},${tx.unitCostPrice},${tx.totalCostPrice},${tx.unitSellingPrice},${tx.totalSellingPrice},${tx.discount},${tx.balanceAfterDiscount},${tx.profit},"${tx.paymentMethod}","${tx.cashierName}","${tx.date.split("T")[0]}","${branchName}"`;
         csvContent += line + "\r\n";
       });
 
-      csvContent += `\r\n"TOTALS",,,,,,,${totalQty},,,,,,${totalCost},${totalSell},${totalDiscount},${totalNett},${totalProfit}\r\n`;
+      // Add Grand Totals row
+      csvContent += `\r\n"GRAND TOTALS",,-,-,${totalQty},-,${totalCost},-,${totalSell},${totalDiscount},${totalNett},${totalProfit},-,-,-,-\r\n`;
     
     } else if (subReportProfile === "top-selling") {
       csvContent += "S/N,Medicine Name,Category,Total Quantity Sold,Total Net Revenue (NGN),Total Discounts (NGN),Profit Generated (NGN),Supplier\r\n";
@@ -1300,6 +1413,580 @@ export default function ReportingCenterView({
     });
   }, [activityLogs, logSearch, logActionType]);
 
+  const renderReportTableContent = (isPrint: boolean = false) => {
+    // Determine target rows
+    // On print, use the entire unpaginated filtered list; on UI, use the sortedAndPaginatedData
+    const rows = isPrint ? currentRawDataList : sortedAndPaginatedData;
+
+    // Helper to render headers (sorting is only on UI screen)
+    const renderHeader = (field: string, label: string) => {
+      if (isPrint) return <span className="font-bold text-[10px] uppercase text-slate-700">{label}</span>;
+      return renderSortableHeader(field, label);
+    };
+
+    switch (subReportProfile) {
+      case "ledger":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("sn", "S/N")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medicine Name")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("quantity", "Quantity")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("unitCostPrice", "Unit Cost")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("totalCostPrice", "Total Cost")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("unitSellingPrice", "Unit Selling")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("totalSellingPrice", "Total Selling")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("discount", "Discount")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("balanceAfterDiscount", "Balance (Nett)")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("paymentMethod", "Method")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("cashierName", "Cashier")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("date", "Date & Time")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("branchId", "Branch")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, index: number) => {
+                const branchObj = branches.find(b => b.id === row.branchId);
+                const branchName = branchObj ? branchObj.name : row.branchId;
+                
+                // Color code rules
+                // Low profit sales (<15% profit margin)
+                const totalSell = row.balanceAfterDiscount;
+                const marginPercent = totalSell > 0 ? (row.profit / totalSell) * 100 : 0;
+                const isLowMargin = marginPercent < 15 && row.profit > 0;
+                
+                // High value transaction indicators (Sell value > 200,000 NGN or qty > 50)
+                const isHighValue = row.totalSellingPrice > 200000 || row.quantity > 50;
+
+                return (
+                  <tr 
+                    key={`${row.invoiceNumber}-${row.sn}-${index}`} 
+                    className={`hover:bg-slate-50 border-b border-slate-100 ${isHighValue ? "bg-violet-50/40 hover:bg-violet-50/70" : ""}`}
+                  >
+                    <td className="px-4 py-2.5 font-mono text-slate-500 font-bold">{row.sn}</td>
+                    <td className="px-4 py-2.5 font-bold text-slate-900">
+                      <div>
+                        <span>{row.medicineName}</span>
+                        {isLowMargin && (
+                          <span className="inline-block ml-1 px-1 bg-red-105 text-red-700 text-[8px] rounded font-bold uppercase tracking-tighter" title="Margin below 15%">Low-Margin</span>
+                        )}
+                        {isHighValue && (
+                          <span className="inline-block ml-1 px-1 bg-violet-100 text-violet-700 text-[8px] rounded font-bold uppercase tracking-tighter" title="High value transaction">High-Volume</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                    <td className="px-4 py-2.5 text-center font-bold">{row.quantity}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.unitCostPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.totalCostPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-700 font-medium">₦{row.unitSellingPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-700">₦{row.totalSellingPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-amber-600 font-bold">
+                      {row.discount > 0 ? `-₦${row.discount.toLocaleString()}` : "₦0"}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono font-extrabold text-slate-950">₦{row.balanceAfterDiscount.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[9px] font-bold">
+                        {row.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 font-medium">{row.cashierName}</td>
+                    <td className="px-4 py-2.5 text-slate-500 font-mono text-[10px]">
+                      {row.date.replace("T", " ").substring(0, 16)}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600 truncate max-w-[120px]" title={branchName}>{branchName}</td>
+                  </tr>
+                );
+              })}
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={14} className="text-center py-8 text-slate-400">No verified sales matching query standard.</td>
+                </tr>
+              )}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={3} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Grand Corporate Totals</td>
+                <td className="px-4 py-2.5 text-center font-mono font-extrabold">{reportTotals.quantitySum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono"></td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-700">₦{reportTotals.costPriceSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono"></td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-700">₦{reportTotals.sellingPriceSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-red-650">-₦{reportTotals.discountSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono font-black text-slate-950">₦{reportTotals.balanceSum.toLocaleString()}</td>
+                <td colSpan={4} className="px-4 py-2.5 text-right font-sans text-emerald-700">
+                  ESTIMATED GROSS PROFIT: <span className="font-mono text-md font-black">₦{reportTotals.profitSum.toLocaleString()}</span>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "top-selling":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medicine Name")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("quantity", "Total Sold Qty")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("revenue", "Net Sales Inflow")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("discount", "Total Discounts")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("profit", "Net Profit Contribution")}</th>
+                <th className="px-4 py-2.5 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Main Supplier")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-bold text-slate-900">{row.medicineName}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                  <td className="px-4 py-2.5 text-center font-bold font-mono text-slate-900">{row.quantity} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold">₦{row.revenue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-red-500 font-bold">₦{row.discount.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-emerald-600 font-black">₦{row.profit.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-slate-500 italic font-medium">{row.supplier}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={3} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Totals</td>
+                <td className="px-4 py-2.5 text-center font-mono font-extrabold">{reportTotals.quantitySum.toLocaleString()} Units</td>
+                <td className="px-4 py-2.5 text-right font-mono">₦{reportTotals.balanceSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-red-500">-₦{reportTotals.discountSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-emerald-700">₦{reportTotals.profitSum.toLocaleString()} Profit</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "slow-moving":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medicine")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("genericName", "Composition/Generic")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("stock", "Current Stock")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("totalSold", "Units Sold")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("turnoverRate", "Turnover Rate")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("revenue", "Inflow Revenue")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Supplier")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-bold text-slate-900">{row.medicineName}</td>
+                  <td className="px-4 py-2.5 italic text-slate-400 truncate max-w-[130px]">{row.genericName}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold text-amber-600">{row.stock} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-800 font-medium">{row.totalSold} Units</td>
+                  <td className="px-4 py-2.5 text-center font-mono">
+                    <span className="px-1.5 py-0.5 bg-amber-50 text-amber-800 font-extrabold rounded text-[9px] border border-amber-200">
+                      {row.turnoverRate.toFixed(1)}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold">₦{row.revenue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-slate-500 italic">{row.supplier}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={4} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Combined Totals</td>
+                <td className="px-4 py-2.5 text-right font-mono">{reportTotals.quantitySum.toLocaleString()} units</td>
+                <td className="px-4 py-2.5 text-right font-mono">{reportTotals.customAgg1.toLocaleString()} units</td>
+                <td></td>
+                <td className="px-4 py-2.5 text-right font-mono">₦{reportTotals.balanceSum.toLocaleString()}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "dead-stock":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medicine")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("genericName", "Generic Composition")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("stock", "Physical Stock")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("costValue", "Wholesale Valuation")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("retailValue", "Expected Retail")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("expiryDate", "Expiry")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("shelfLocation", "Shelf Location")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Manufacturer")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100 bg-slate-50/20">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-bold text-red-700">{row.medicineName}</td>
+                  <td className="px-4 py-2.5 italic text-slate-400">{row.genericName}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-800">{row.stock} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">₦{row.costValue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.retailValue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-slate-500 font-mono font-bold text-red-650">{row.expiryDate}</td>
+                  <td className="px-4 py-2.5 text-slate-700 font-mono">{row.shelfLocation}</td>
+                  <td className="px-4 py-2.5 text-slate-500 italic">{row.supplier}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={4} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Landed Capital Tied Up</td>
+                <td className="px-4 py-2.5 text-right font-mono">{reportTotals.quantitySum.toLocaleString()} units</td>
+                <td className="px-4 py-2.5 text-right font-mono text-red-650">₦{reportTotals.costPriceSum.toLocaleString()} (Cost)</td>
+                <td className="px-4 py-2.5 text-right font-mono">₦{reportTotals.sellingPriceSum.toLocaleString()} (Retail)</td>
+                <td colSpan={3}></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "low-stock":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medicine")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("currentStock", "Current Stock")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("reorderLevel", "Safety Level")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right text-rose-600">{renderHeader("deficit", "Deficit Units")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("suggestedCost", "Reorder Cost Estimate")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Supplier")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100 bg-rose-50/20">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-bold text-red-700">{row.medicineName}</td>
+                  <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-extrabold text-red-600">{row.currentStock} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-500">{row.reorderLevel} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold text-rose-700">+{row.deficit} Units</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-extrabold text-slate-900">₦{row.suggestedCost.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{row.supplier}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={3} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Required Sourcing Burden</td>
+                <td className="px-4 py-2.5 text-right font-mono">{reportTotals.quantitySum.toLocaleString()}</td>
+                <td></td>
+                <td className="px-4 py-2.5 text-right font-mono text-rose-600">+{reportTotals.customAgg1.toLocaleString()} units Deficit</td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-950 font-black">₦{reportTotals.costPriceSum.toLocaleString()} Budgeted</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "expiry":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medication Name")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("batchNumber", "Batch No")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("expiryDate", "Expiration Date")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("stock", "Stock Level")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("unitCost", "Unit Cost")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right font-bold text-red-650">{renderHeader("wasteValue", "Waste Valuation")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("daysToExpiry", "Alert Status")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Manufacturer")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => {
+                const isCrit = row.daysToExpiry < 0;
+                return (
+                  <tr key={i} className={`hover:bg-slate-50 border-b border-slate-100 ${isCrit ? "bg-red-50/35" : "bg-yellow-50/15"}`}>
+                    <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                    <td className="px-4 py-2.5 font-bold text-slate-900">{row.medicineName}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-500">{row.batchNumber}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                    <td className="px-4 py-2.5 text-center font-mono font-bold">{row.expiryDate}</td>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-900">{row.stock} Units</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.unitCost.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono font-black text-red-600">₦{row.wasteValue.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-center">
+                      <span className={`px-2 py-0.5 font-bold rounded text-[9px] uppercase tracking-tighter ${
+                        isCrit ? "bg-red-100 text-red-700 animate-pulse" : "bg-amber-100 text-amber-800"
+                      }`}>
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-500">{row.supplier}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={5} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Estimated Chemical Waste Capital</td>
+                <td className="px-4 py-2.5 text-right font-mono">{reportTotals.quantitySum.toLocaleString()}</td>
+                <td></td>
+                <td className="px-4 py-2.5 text-right font-mono text-red-700 font-black">₦{reportTotals.costPriceSum.toLocaleString()}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "profit-margin":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("medicineName", "Medication")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("category", "Category")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("costPrice", "Wholesale Cost")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("sellingPrice", "Selling Price")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right text-emerald-600">{renderHeader("profitPerUnit", "Profit/unit")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("marginPercent", "Margin %")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("stock", "Current Stock")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right font-bold text-emerald-650">{renderHeader("potentialProfit", "Expected Profit Valuation")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplier", "Manufacturer")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => {
+                const isVeryLow = row.marginPercent < 15;
+                return (
+                  <tr key={i} className={`hover:bg-slate-50 border-b border-slate-100 ${isVeryLow ? "bg-red-50/20" : ""}`}>
+                    <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                    <td className="px-4 py-2.5 font-bold text-slate-900">
+                      <span>{row.medicineName}</span>
+                      {isVeryLow && <span className="inline-block ml-1 px-1 bg-red-100 text-red-700 text-[8px] rounded uppercase font-bold">Unprofitable</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-600">{row.category}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.costPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-700 font-medium">₦{row.sellingPrice.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-emerald-600 font-bold">₦{row.profitPerUnit.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-center font-mono font-bold">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold border ${isVeryLow ? "bg-rose-50 text-rose-700 border-rose-100" : "bg-emerald-50 text-emerald-800 border-emerald-100"}`}>
+                        {row.marginPercent.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-500 font-bold">{row.stock} Units</td>
+                    <td className="px-4 py-2.5 text-right font-mono text-emerald-700 font-extrabold">₦{row.potentialProfit.toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-slate-500 italic max-w-[130px] truncate">{row.supplier}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={7} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Corporate Expected Margin Valuation</td>
+                <td className="px-4 py-2.5 text-right font-mono font-bold text-slate-800">{reportTotals.quantitySum.toLocaleString()} Items</td>
+                <td className="px-4 py-2.5 text-right font-mono font-black text-emerald-700">₦{reportTotals.profitSum.toLocaleString()} POTENTIAL</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "cashier-perf":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("cashierName", "Cashier Operator")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("count", "Transactions Volume")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("revenue", "Invoiced Inflow")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("avgTicketValue", "Average Ticket Value")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("performanceScore", "Efficiency Rating")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-black text-slate-900">{row.cashierName}</td>
+                  <td className="px-4 py-2.5 font-mono font-bold text-indigo-650">{row.count} registers</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-950 font-bold">₦{row.revenue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.avgTicketValue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-center font-bold">
+                    <div className="flex items-center justify-center gap-1 font-semibold text-amber-600">
+                      <Star size={11} className="fill-amber-400 text-amber-500" />
+                      <span>{row.performanceScore?.toFixed(1) || "5.0"} / 5.0</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={2} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Roster Aggregated Checkouts</td>
+                <td className="px-4 py-2.5 font-mono text-indigo-700">{reportTotals.customAgg1} sales</td>
+                <td className="px-4 py-2.5 text-right font-mono font-black text-slate-950">₦{reportTotals.balanceSum.toLocaleString()}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "branch-perf":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("branchName", "Branch Name")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("manager", "Station Manager")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("totalSalesCount", "Checkout Rate")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("totalRevenue", "Billing Revenue")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("costValue", "Inventory Cost price")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right text-emerald-650">{renderHeader("netProfit", "Station Nett Profit")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("marginPercent", "Nett Margin")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-black text-slate-900">{row.branchName}</td>
+                  <td className="px-4 py-2.5 text-slate-600 font-medium">{row.manager}</td>
+                  <td className="px-4 py-2.5 text-center font-mono font-bold text-indigo-600">{row.totalSalesCount} trans</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-900 font-bold">₦{row.totalRevenue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.costValue.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-emerald-600 font-black">₦{row.netProfit.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 font-extrabold rounded text-[9px] border border-emerald-100">
+                      {row.marginPercent.toFixed(1)}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={3} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Multi-Branch Consolidated Balances</td>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-indigo-700">{reportTotals.customAgg1} checkouts</td>
+                <td className="px-4 py-2.5 text-right font-mono font-black text-slate-950">₦{reportTotals.balanceSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono">₦{reportTotals.costPriceSum.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-right font-mono text-emerald-700">₦{reportTotals.profitSum.toLocaleString()} Profit</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "supplier-purchase":
+        return (
+          <table className="w-full text-left border-collapse table-auto">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("supplierName", "supplier partner")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("contactPerson", "Representative")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("phone", "Telephone Line")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("outstandingBalance", "Outstanding Accounts Payable")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("medicinesCount", "In-Stock SKU Count")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("costEstimate", "Wholesale Valuation carried")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-black text-slate-900">{row.supplierName}</td>
+                  <td className="px-4 py-2.5 text-slate-600 font-medium">{row.contactPerson}</td>
+                  <td className="px-4 py-2.5 font-mono text-slate-500">{row.phone}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-red-650 font-bold">₦{row.outstandingBalance.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-center font-bold font-mono text-indigo-600">{row.medicinesCount} SKUs</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold text-slate-900">₦{row.costEstimate.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-355 bg-slate-50 font-black text-slate-900 border-b border-slate-355">
+              <tr className="text-[11px]">
+                <td colSpan={4} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Landed Sourcing Accounts</td>
+                <td className="px-4 py-2.5 text-right font-mono text-red-650">₦{reportTotals.balanceSum.toLocaleString()} (Liability)</td>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-indigo-700">{reportTotals.customAgg1} SKUs</td>
+                <td className="px-4 py-2.5 text-right font-mono text-slate-950 font-black">₦{reportTotals.costPriceSum.toLocaleString()} Landed</td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      case "customer-purchase":
+        return (
+          <table className="w-full text-left border-collapse table-auto text-xs">
+            <thead>
+              <tr className="bg-slate-100 text-[10px] uppercase font-bold text-slate-700 border-b border-slate-300">
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">S/N</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("customerName", "Patient Profile")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("phone", "Telephone Line")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10">{renderHeader("email", "Email Identity")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("points", "Loyalty Points")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("walletBalance", "Deposit cash wallet")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right">{renderHeader("creditLimit", "Permitted Credit Line")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-right font-bold text-emerald-650">{renderHeader("salesVolume", "Total Spend Volume")}</th>
+                <th className="px-4 py-2 bg-slate-100 sticky top-0 z-10 text-center">{renderHeader("count", "Checkout Sessions")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 text-xs text-slate-800">
+              {rows.map((row: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-50 border-b border-slate-100">
+                  <td className="px-4 py-2.5 font-mono text-slate-400 font-bold">{i + 1}</td>
+                  <td className="px-4 py-2.5 font-black text-slate-900">{row.customerName}</td>
+                  <td className="px-4 py-2.5 font-mono text-slate-500">{row.phone}</td>
+                  <td className="px-4 py-2.5 text-slate-600 truncate max-w-[130px]" title={row.email}>{row.email}</td>
+                  <td className="px-4 py-2.5 text-center font-mono font-bold text-amber-600">★ {row.points} pts</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-semibold text-slate-700">₦{row.walletBalance.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono text-slate-500">₦{row.creditLimit.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-black text-emerald-700">₦{row.salesVolume.toLocaleString()}</td>
+                  <td className="px-4 py-2.5 text-center font-bold font-mono text-indigo-600">{row.count} times</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-350 bg-slate-50 font-black text-slate-900 border-b border-slate-350">
+              <tr className="text-[11px]">
+                <td colSpan={4} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider">Patient Portfolio Summary</td>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-amber-600">★ {reportTotals.customAgg2.toLocaleString()} pts</td>
+                <td className="px-4 py-2.5 text-right font-mono">₦{reportTotals.customAgg3.toLocaleString()}</td>
+                <td></td>
+                <td className="px-4 py-2.5 text-right font-mono text-emerald-700 font-extrabold">₦{reportTotals.balanceSum.toLocaleString()} Consumed</td>
+                <td className="px-4 py-2.5 text-center font-mono font-bold text-indigo-700">{reportTotals.customAgg1} visits</td>
+              </tr>
+            </tfoot>
+          </table>
+        );
+
+      default:
+        return (
+          <div className="p-8 text-center text-slate-400 text-xs">
+            Unknown or unsupported sub-reporting profile parameter config.
+          </div>
+        );
+    }
+  };
+
   const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#6366f1", "#ec4899", "#8b5cf6", "#14b8a6"];
 
   return (
@@ -1408,8 +2095,9 @@ export default function ReportingCenterView({
               </span>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               
+              {/* Report Model Selection */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Report Type</label>
                 <select
@@ -1424,36 +2112,65 @@ export default function ReportingCenterView({
                 </select>
               </div>
 
+              {/* Branch Constraint */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Sub-Report View</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Target Branch</label>
                 <select
-                  value={subReportProfile}
-                  onChange={(e) => setSubReportProfile(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-semibold"
+                  value={filterBranchId}
+                  onChange={(e) => setFilterBranchId(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
                 >
-                  {reportType === "sales" && (
+                  <option value="all">🌐 All Area Branches (Combined)</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name} ({b.location.split(",")[0]})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date From */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date Initiated (From)</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                />
+              </div>
+
+              {/* Date To */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date Completed (To)</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                />
+              </div>
+
+              {/* Category selector */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Category / Type Code</label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                >
+                  <option value="all">🔍 Show All Categories</option>
+                  {reportType === "inventory" ? (
+                    uniqueCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))
+                  ) : reportType === "finance" ? (
                     <>
-                      <option value="transaction-details">📋 Transaction Details (Full Ledger)</option>
-                      <option value="top-selling">🏆 Top Selling Medicines</option>
-                      <option value="slow-moving">🐢 Slow Moving Medicines</option>
-                      <option value="dead-stock">💀 Dead Stock Report</option>
-                      <option value="low-stock">⚠️ Low Stock Report</option>
-                      <option value="expiry">⏰ Expiry Report</option>
-                      <option value="profit-margin">💰 Profit Margin Report</option>
-                      <option value="cashier-perf">👤 Cashier Performance</option>
-                      <option value="branch-perf">🏢 Branch Performance</option>
-                      <option value="supplier-purchase">🚚 Supplier Purchase Report</option>
-                      <option value="customer-purchase">👥 Customer Purchase Report</option>
+                      <option value="Sales Revenue">Sales Revenue</option>
+                      <option value="Salary">Salary</option>
+                      <option value="Rent">Rent</option>
+                      <option value="Utilities">Utilities</option>
                     </>
-                  )}
-                  {reportType === "inventory" && (
-                    <option value="valuation">📦 Inventory Valuation</option>
-                  )}
-                  {reportType === "finance" && (
-                    <option value="finance-ledger">💸 Finance Ledger</option>
-                  )}
-                  {reportType === "staff" && (
-                    <option value="staff-ledger">👥 Staff Performance Ledger</option>
+                  ) : (
+                    <option value="all">Not applicable for selection</option>
                   )}
                 </select>
               </div>
@@ -1461,38 +2178,43 @@ export default function ReportingCenterView({
             </div>
           </div>
 
-          {/* ==================== ANALYTICS CARDS - TRANSACTION DETAILS ==================== */}
-          {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-slate-500 uppercase">Total Transactions</p>
-                <p className="text-lg font-extrabold text-slate-900 mt-1">{filteredSalesTransactionsFiltered.length}</p>
-                <p className="text-[9px] text-slate-400 mt-0.5">Line items</p>
+          {/* ==================== SUB REVENUE KPIS (SALES REPORT) ==================== */}
+          {reportType === "sales" && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Gross Sales Revenue</p>
+                <p className="text-xl font-extrabold text-slate-900 mt-1">₦{salesSummaryKPIs.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+                <div className="flex items-center gap-1 text-[10px] text-emerald-600 mt-1.5 font-bold">
+                  <ArrowUpRight size={12} />
+                  <span>Filtered data range</span>
+                </div>
               </div>
-              <div className="bg-white border border-emerald-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-emerald-600 uppercase">Total Revenue</p>
-                <p className="text-lg font-extrabold text-emerald-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.totalSellingPrice, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                <p className="text-[9px] text-emerald-500 mt-0.5">Gross sales</p>
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Total Orders Registered</p>
+                <p className="text-xl font-extrabold text-slate-900 mt-1">{salesSummaryKPIs.count} Trans.</p>
+                <p className="text-[10px] text-slate-500 mt-1.5">Awaiting compliance clearance</p>
               </div>
-              <div className="bg-white border border-blue-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-blue-600 uppercase">Total Profit</p>
-                <p className="text-lg font-extrabold text-blue-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.profit, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                <p className="text-[9px] text-blue-500 mt-0.5">Nett margin</p>
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Average Order Value</p>
+                <p className="text-xl font-extrabold text-slate-900 mt-1">₦{salesSummaryKPIs.avgOrder.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+                <p className="text-[10px] text-slate-500 mt-1.5">Basket transaction depth</p>
               </div>
-              <div className="bg-white border border-amber-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-amber-600 uppercase">Qty Sold</p>
-                <p className="text-lg font-extrabold text-amber-700 mt-1">{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.quantity, 0).toLocaleString()}</p>
-                <p className="text-[9px] text-amber-500 mt-0.5">Units dispatched</p>
-              </div>
-              <div className="bg-white border border-rose-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-rose-600 uppercase">Total Discount</p>
-                <p className="text-lg font-extrabold text-rose-700 mt-1">₦{filteredSalesTransactionsFiltered.reduce((s, t) => s + t.discount, 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
-                <p className="text-[9px] text-rose-500 mt-0.5">Loyalty waivers</p>
-              </div>
-              <div className="bg-white border border-purple-200 rounded-xl p-3 shadow-sm">
-                <p className="text-[9px] font-bold text-purple-600 uppercase">Avg Sale Value</p>
-                <p className="text-lg font-extrabold text-purple-700 mt-1">₦{filteredSalesTransactionsFiltered.length > 0 ? (filteredSalesTransactionsFiltered.reduce((s, t) => s + t.balanceAfterDiscount, 0) / filteredSalesTransactionsFiltered.length).toLocaleString("en-US", { maximumFractionDigits: 0 }) : 0}</p>
-                <p className="text-[9px] text-purple-500 mt-0.5">Per line item</p>
+              <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Cash vs Bank Transfer</p>
+                <div className="mt-1 flex items-center justify-between text-xs font-semibold text-slate-800">
+                  <span>Cash: ₦{salesSummaryKPIs.cashTotal.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1 flex">
+                  <div 
+                    className="h-full bg-emerald-500" 
+                    style={{ width: `${salesSummaryKPIs.total > 0 ? (salesSummaryKPIs.cashTotal / salesSummaryKPIs.total) * 100 : 0}%` }}
+                  />
+                  <div 
+                    className="h-full bg-blue-500" 
+                    style={{ width: `${salesSummaryKPIs.total > 0 ? (salesSummaryKPIs.transferTotal / salesSummaryKPIs.total) * 100 : 0}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-slate-400 mt-1 block">Green = Cash | Blue = Transfer</span>
               </div>
             </div>
           )}
@@ -1592,143 +2314,91 @@ export default function ReportingCenterView({
             </div>
           )}
 
-          {/* ==================== ANALYTICS GRAPHS - TRANSACTION DETAILS ==================== */}
-          {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Daily Sales Trend */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
-                  <TrendingUp size={13} className="text-emerald-500" />
-                  Daily Sales Trend
+          {/* ==================== ANALYTICS GRAPH TRENDS ==================== */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            {/* Left Graph Panel */}
+            <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-2">
+                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5">
+                  <TrendingUp size={14} className="text-emerald-500" />
+                  Visual Analytics Trend
                 </h3>
-                <div className="h-48">
-                  {salesChartData.length > 0 ? (
+                <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-bold rounded-md">REAL-TIME DB</span>
+              </div>
+
+              <div className="h-64 mt-2">
+                {reportType === "sales" && (
+                  salesChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={salesChartData}>
+                      <AreaChart data={salesChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <defs>
-                          <linearGradient id="dailySalesGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
                             <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="date" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
                         <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Revenue"]} />
-                        <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#dailySalesGrad)" />
+                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Revenue"]} />
+                        <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#salesGrad)" />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
-                  )}
-                </div>
-              </div>
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No sales transactions found in this date window.</div>
+                  )
+                )}
 
-              {/* Top Selling Medicines */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
-                  🏆 Top Selling Medicines
-                </h3>
-                <div className="h-48">
-                  {topMedicinesChartData.length > 0 ? (
+                {reportType === "inventory" && (
+                  inventoryCategoryChartData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={topMedicinesChartData} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis type="number" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <YAxis dataKey="name" type="category" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" width={120} />
-                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => [`${value} units`, "Quantity Sold"]} />
-                        <Bar dataKey="quantity" fill="#10b981" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Top Categories */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
-                  🏷️ Top Categories
-                </h3>
-                <div className="h-48">
-                  {categoryChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={categoryChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={80}
-                          paddingAngle={2}
-                          dataKey="value"
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          labelLine={false}
-                        >
-                          {categoryChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
-                  )}
-                </div>
-              </div>
-
-              {/* Branch Sales Performance */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
-                  <Building size={13} className="text-emerald-500" />
-                  Branch Sales Performance
-                </h3>
-                <div className="h-48">
-                  {branchChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={branchChartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                      <BarChart data={inventoryCategoryChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
                         <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
+                        <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: "#e2e8f0" }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Valuation"]} />
                         <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
-                  )}
-                </div>
-              </div>
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No inventory products match criteria.</div>
+                  )
+                )}
 
-              {/* Payment Method Distribution */}
-              <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm lg:col-span-2">
-                <h3 className="text-xs uppercase font-extrabold text-slate-500 flex items-center gap-1.5 mb-3">
-                  💳 Payment Method Distribution
-                </h3>
-                <div className="h-48">
-                  {paymentMethodChartData.length > 0 ? (
+                {reportType === "finance" && (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={financeSummaryChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" stroke="#94a3b8" tickStyle={{ fontSize: 10 }} />
+                      <YAxis stroke="#94a3b8" tickStyle={{ fontSize: 10 }} />
+                      <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Sum Amount"]} />
+                      <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                        {financeSummaryChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+
+                {reportType === "staff" && (
+                  calculatedStaffData.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={paymentMethodChartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" tickStyle={{ fontSize: 10 }} stroke="#94a3b8" />
-                        <YAxis tickStyle={{ fontSize: 9 }} stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ fontSize: 10, borderRadius: 6 }} formatter={(value: any) => `₦${value.toLocaleString()}`} />
-                        <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                          {paymentMethodChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Bar>
+                      <BarChart data={calculatedStaffData.map(s => ({ name: s.name.split(" ")[1] || s.name, sales: s.totalSalesValue }))} layout="vertical" margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis type="number" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
+                        <YAxis dataKey="name" type="category" stroke="#94a3b8" tickStyle={{ fontSize: 9 }} />
+                        <Tooltip contentStyle={{ fontSize: 11 }} formatter={(value: any) => [`₦${value.toLocaleString()}`, "Sales Managed"]} />
+                        <Bar dataKey="sales" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No data available</div>
-                  )}
-                </div>
+                    <div className="h-full flex items-center justify-center text-xs text-slate-400">No staff performance stats.</div>
+                  )
+                )}
               </div>
             </div>
-          )}
 
             {/* Right Export and Controls Panel */}
             <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col justify-between">
@@ -1785,240 +2455,138 @@ export default function ReportingCenterView({
           </div>
 
           {/* ==================== DETAIL REPORT GRID TABLE ==================== */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex justify-between items-center">
-              <h3 className="text-xs uppercase tracking-wider font-extrabold text-slate-500">
-                Itemized Live Ledger Breakdown
-              </h3>
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-200 px-2 py-0.5 rounded">
-                Database active
-              </span>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+            
+            {/* Header Title block */}
+            <div className="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div>
+                <h3 className="text-xs uppercase tracking-wider font-extrabold text-slate-700 flex items-center gap-1.5">
+                  <Grid size={13} className="text-emerald-500" />
+                  Itemized Compliance Ledger
+                </h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">National Agency for Food & Drug Administration (NAFDAC) formatted record index</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-bold font-mono text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                  DATABASE CONNECTED (LIVE)
+                </span>
+              </div>
             </div>
 
-            <div className="overflow-x-auto min-h-[250px]">
-              
-            {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 z-10">
-                    <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-500 border-b-2 border-slate-300">
-                      <th className="px-3 py-3 w-12">{renderSortableHeader("sn", "S/N")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("invoiceNumber", "Invoice #")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("medicineName", "Medicine Name")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("category", "Category")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("quantity", "Qty")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("unitCostPrice", "Unit Cost Price")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("totalCostPrice", "Total Cost")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("unitSellingPrice", "Unit Sell Price")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("totalSellingPrice", "Total Sell")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("discount", "Discount")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("balanceAfterDiscount", "Balance")}</th>
-                      <th className="px-3 py-3 text-right">{renderSortableHeader("profit", "Profit")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("paymentMethod", "Payment")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("cashierName", "Cashier")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("date", "Date & Time")}</th>
-                      <th className="px-3 py-3">{renderSortableHeader("branchName", "Branch")}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {sortedAndPaginatedData.map((tx: any) => {
-                      const isLowProfit = tx.profit < (tx.balanceAfterDiscount * 0.15);
-                      const isHighValue = tx.balanceAfterDiscount > 20000;
-                      const profitColor = tx.profit > 0 ? "text-emerald-700 font-bold" : "text-rose-700 font-bold";
-                      const rowBgClass = isLowProfit ? "bg-amber-50/50" : (isHighValue ? "bg-blue-50/30" : "hover:bg-slate-50");
-                      const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-                      return (
-                        <tr key={tx.invoiceNumber + tx.medicineName} className={`${rowBgClass} transition-colors`}>
-                          <td className="px-3 py-2.5 font-mono text-slate-500">{tx.sn}</td>
-                          <td className="px-3 py-2.5 font-mono text-slate-600 font-bold">{tx.invoiceNumber}</td>
-                          <td className="px-3 py-2.5 font-semibold text-slate-800">{tx.medicineName}</td>
-                          <td className="px-3 py-2.5">
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[9px] font-bold">{tx.category}</span>
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-bold">{tx.quantity}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-600">₦{tx.unitCostPrice.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-600">₦{tx.totalCostPrice.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-800">₦{tx.unitSellingPrice.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-slate-800 font-bold">₦{tx.totalSellingPrice.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-rose-600 font-bold">-₦{tx.discount.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-emerald-700 font-extrabold">₦{tx.balanceAfterDiscount.toLocaleString()}</td>
-                          <td className={`px-3 py-2.5 text-right font-mono ${profitColor}`}>{tx.profit >= 0 ? "+" : ""}₦{tx.profit.toLocaleString()}</td>
-                          <td className="px-3 py-2.5">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                              tx.paymentMethod === "Cash" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
-                              tx.paymentMethod === "POS" ? "bg-blue-50 text-blue-700 border border-blue-100" :
-                              tx.paymentMethod === "Bank Transfer" ? "bg-amber-50 text-amber-700 border border-amber-100" :
-                              tx.paymentMethod === "Mobile Money" ? "bg-purple-50 text-purple-700 border border-purple-100" :
-                              "bg-rose-50 text-rose-700 border border-rose-100"
-                            }`}>
-                              {tx.paymentMethod}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-slate-600">{tx.cashierName}</td>
-                          <td className="px-3 py-2.5 text-slate-500 font-mono text-[10px]">
-                            {new Date(tx.date).toLocaleDateString()}<br/>
-                            <span className="text-slate-400">{new Date(tx.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                          </td>
-                          <td className="px-3 py-2.5 font-semibold text-slate-700">{branchName}</td>
-                        </tr>
-                      );
-                    })}
-                    {sortedAndPaginatedData.length === 0 && (
-                      <tr>
-                        <td colSpan={16} className="text-center py-12 text-slate-400">
-                          <div className="flex flex-col items-center gap-2">
-                            <Search size={24} className="text-slate-300" />
-                            <p>No transactions found matching your filters.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+            {/* Sub-Reports Switcher Tab Rail (if Sales represents reportType) */}
+            {reportType === "sales" && (
+              <div className="bg-slate-100/50 px-4 py-3 border-b border-slate-200 flex flex-wrap gap-1.5 items-center">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mr-2 flex items-center gap-1">
+                  <Activity size={10} className="text-slate-400" />
+                  Sub Reports:
+                </span>
+                {[
+                  { id: "ledger", label: "📄 Daily Sales Ledger" },
+                  { id: "top-selling", label: "🔥 Top Selling" },
+                  { id: "slow-moving", label: "🐢 Slow Moving" },
+                  { id: "dead-stock", label: "💀 Dead Stock" },
+                  { id: "low-stock", label: "⚠️ Low Stock Alert" },
+                  { id: "expiry", label: "⏰ Critical Expiry" },
+                  { id: "profit-margin", label: "💰 Profit Margin Ledger" },
+                  { id: "cashier-perf", label: "👤 Cashier Performance" },
+                  { id: "branch-perf", label: "🏢 Branch performance" },
+                  { id: "supplier-purchase", label: "🤝 Supplier Sourcing" },
+                  { id: "customer-purchase", label: "👥 Patient Loyalty" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setSubReportProfile(tab.id as any);
+                      setCurrentPage(1); // reset page context
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center cursor-pointer ${
+                      subReportProfile === tab.id
+                        ? "bg-slate-900 text-white shadow"
+                        : "bg-white hover:bg-slate-50 text-slate-600 border border-slate-200"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             )}
 
-              {reportType === "inventory" && (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                      <th className="px-5 py-3">Medicine Profile</th>
-                      <th className="px-5 py-3">Generic Composition</th>
-                      <th className="px-5 py-3">Category</th>
-                      <th className="px-5 py-3">Unit / SKU</th>
-                      <th className="px-5 py-3 text-right">Stock Level</th>
-                      <th className="px-5 py-3 text-right">Landed Cost</th>
-                      <th className="px-5 py-3 text-right">Retail Listing</th>
-                      <th className="px-5 py-3 text-right">Total Wholesale Cost</th>
-                      <th className="px-5 py-3 text-right">Total Retail Value</th>
-                      <th className="px-5 py-3">Expiration State</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {filteredInventoryData.map(m => {
-                      const qty = filterBranchId === "all" ? m.stock : (m.branchStocks[filterBranchId] || 0);
-                      const isLow = qty <= m.reorderLevel;
-                      const isExpired = new Date(m.expiryDate) < new Date("2026-06-11");
-                      return (
-                        <tr key={m.id} className="hover:bg-slate-50">
-                          <td className="px-5 py-3 font-bold text-slate-800">{m.name}</td>
-                          <td className="px-5 py-3 italic text-slate-400 text-[11px]">{m.genericName}</td>
-                          <td className="px-5 py-3">{m.category}</td>
-                          <td className="px-5 py-3 font-mono">{m.unit}</td>
-                          <td className={`px-5 py-3 text-right font-bold ${isLow ? "text-amber-600 font-black animate-pulse" : ""}`}>{qty} Units</td>
-                          <td className="px-5 py-3 text-right text-slate-500">₦{m.purchasePrice.toLocaleString()}</td>
-                          <td className="px-5 py-3 text-right text-slate-800 font-semibold">₦{m.sellingPrice.toLocaleString()}</td>
-                          <td className="px-5 py-3 text-right text-slate-500 font-mono">₦{(m.purchasePrice * qty).toLocaleString()}</td>
-                          <td className="px-5 py-3 text-right text-slate-900 font-mono font-bold">₦{(m.sellingPrice * qty).toLocaleString()}</td>
-                          <td className="px-5 py-3 font-semibold">
-                            {isExpired ? (
-                              <span className="px-2 py-0.5 bg-rose-50 text-rose-700 font-bold rounded-full text-[9px] border border-rose-100">Expired</span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-slate-50 text-slate-600 font-mono text-[9px] rounded-full">Valid: {m.expiryDate}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+            {/* In-table Live search controllers */}
+            <div className="p-4 border-b border-slate-200 bg-white grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 items-center">
+              
+              {/* Dynamic Search */}
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search size={13} className="text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder={`Global search active ledger...`}
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full text-xs pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 placeholder-slate-450 transition-all font-mono"
+                />
+              </div>
 
-              {reportType === "finance" && (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                      <th className="px-5 py-3">Record ID</th>
-                      <th className="px-5 py-3">Date Record</th>
-                      <th className="px-5 py-3">Financial Type</th>
-                      <th className="px-5 py-3">Expense/Revenue Category</th>
-                      <th className="px-5 py-3">Target Branch</th>
-                      <th className="px-5 py-3">Description</th>
-                      <th className="px-5 py-3">Payment Method</th>
-                      <th className="px-5 py-3 text-right">Sum Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {filteredFinancesData.map(f => {
-                      const branchName = branches.find(b => b.id === f.branchId)?.name || "Central Hub";
-                      return (
-                        <tr key={f.id} className="hover:bg-slate-50">
-                          <td className="px-5 py-3 font-mono text-slate-400 font-bold">{f.id}</td>
-                          <td className="px-5 py-3">{f.date}</td>
-                          <td className="px-5 py-3 font-bold">
-                            {f.type === "Income" ? (
-                              <span className="text-emerald-600 flex items-center gap-1">
-                                <ArrowUpRight size={12} /> Income
-                              </span>
-                            ) : (
-                              <span className="text-rose-600 flex items-center gap-1">
-                                <ArrowDownRight size={12} /> Expense
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3 font-semibold text-slate-800">{f.category}</td>
-                          <td className="px-5 py-3 text-slate-500">{branchName}</td>
-                          <td className="px-5 py-3">{f.description}</td>
-                          <td className="px-5 py-3 font-mono">{f.paymentMethod}</td>
-                          <td className={`px-5 py-3 text-right font-extrabold ${f.type === "Income" ? "text-slate-800" : "text-rose-700"}`}>
-                            {f.type === "Income" ? "" : "-"}₦{f.amount.toLocaleString()}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-
-              {reportType === "staff" && (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 text-[10px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                      <th className="px-5 py-3">Staff Member</th>
-                      <th className="px-5 py-3">Official Role</th>
-                      <th className="px-5 py-3">Target Branch Clinic</th>
-                      <th className="px-5 py-3 text-right">Assigned Salary (NGN)</th>
-                      <th className="px-5 py-3 text-right">Transaction Volume</th>
-                      <th className="px-5 py-3 text-right">Sales Under Supervision</th>
-                      <th className="px-5 py-3">State Attendance</th>
-                      <th className="px-5 py-3 text-right">Board Performance Score</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                    {calculatedStaffData.map(s => {
-                      const branchName = branches.find(b => b.id === s.branchId)?.name || s.branchId;
-                      return (
-                        <tr key={s.id} className="hover:bg-slate-50">
-                          <td className="px-5 py-3 font-bold text-slate-800">{s.name}</td>
-                          <td className="px-5 py-3 text-slate-500 font-semibold">{s.role}</td>
-                          <td className="px-5 py-3 text-slate-700">{branchName}</td>
-                          <td className="px-5 py-3 text-right font-mono">₦{s.salary.toLocaleString()}</td>
-                          <td className="px-5 py-3 text-right font-semibold">{s.salesCount} checkouts</td>
-                          <td className="px-5 py-3 text-right text-emerald-700 font-mono font-bold">₦{s.totalSalesValue.toLocaleString()}</td>
-                          <td className="px-5 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                              s.attendanceStatus === "Present" ? "bg-emerald-50 text-emerald-700" : 
-                              s.attendanceStatus === "Late" ? "bg-yellow-50 text-yellow-700" : "bg-rose-50 text-rose-700"
-                            }`}>
-                              {s.attendanceStatus}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-right font-bold text-slate-900">
-                            <div className="flex items-center justify-end gap-1">
-                              <Star size={11} className="fill-yellow-400 text-yellow-500" />
-                              <span>{s.performanceScore.toFixed(1)} / 5.0</span>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
+              {/* Page sizing selector */}
+              <div className="flex items-center gap-2 sm:justify-end md:col-start-3">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Sizing:</span>
+                <select
+                  value={rowsPerPage}
+                  onChange={(e) => {
+                    setRowsPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                >
+                  <option value={10}>10 records / page</option>
+                  <option value={20}>20 records / page</option>
+                  <option value={50}>50 records / page</option>
+                  <option value={100}>100 records / page</option>
+                </select>
+              </div>
 
             </div>
-          </div>
 
+            {/* Scrollable table container */}
+            <div className="overflow-x-auto min-h-[300px] max-h-[600px] border-b border-slate-100">
+              {renderReportTableContent(false)}
+            </div>
+
+            {/* Pagination Controls Footer */}
+            <div className="bg-slate-50/70 p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-slate-500 text-xs font-semibold">
+                Showing <span className="font-extrabold text-slate-900 font-mono">{(currentRawDataList.length === 0) ? 0 : (currentPage - 1) * rowsPerPage + 1}</span> to <span className="font-extrabold text-slate-900 font-mono">{Math.min(currentPage * rowsPerPage, currentRawDataList.length)}</span> of <span className="font-black text-rose-600 font-mono">{currentRawDataList.length}</span> compliant entries
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                >
+                  ⏮ Prev
+                </button>
+
+                <span className="text-xs font-bold text-slate-650 font-mono">
+                  Page <span className="text-slate-900 font-black">{currentPage}</span> of <span className="text-slate-900 font-black">{Math.ceil(currentRawDataList.length / rowsPerPage) || 1}</span>
+                </span>
+
+                <button
+                  disabled={currentPage >= (Math.ceil(currentRawDataList.length / rowsPerPage) || 1)}
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, (Math.ceil(currentRawDataList.length / rowsPerPage) || 1)))}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white transition-all cursor-pointer shadow-sm disabled:cursor-not-allowed"
+                >
+                  Next ⏭
+                </button>
+              </div>
+            </div>
+
+          </div>
         </div>
       )}
 
@@ -2828,56 +3396,7 @@ export default function ReportingCenterView({
                                     <span className="text-slate-400 font-extrabold flex items-center gap-1 inline-flex justify-end">
                                       <ToggleLeft size={20} /> Restrict
                                     </span>
-            )}
-            {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (() => {
-              const totals = filteredSalesTransactionsFiltered.reduce((acc: any, tx: any) => {
-                acc.totalQty += tx.quantity;
-                acc.totalCost += tx.totalCostPrice;
-                acc.totalSell += tx.totalSellingPrice;
-                acc.totalDiscount += tx.discount;
-                acc.totalNett += tx.balanceAfterDiscount;
-                acc.totalProfit += tx.profit;
-                return acc;
-              }, { totalQty: 0, totalCost: 0, totalSell: 0, totalDiscount: 0, totalNett: 0, totalProfit: 0 });
-              return (
-                <div className="bg-slate-50 border-t-2 border-slate-300 p-4 space-y-2">
-                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs font-mono">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL QTY SOLD</span>
-                      <span className="font-extrabold text-slate-900 text-sm">{totals.totalQty.toLocaleString()} units</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL COST VALUE</span>
-                      <span className="font-extrabold text-slate-900 text-sm">₦{totals.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL SELL VALUE</span>
-                      <span className="font-extrabold text-emerald-700 text-sm">₦{totals.totalSell.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL DISCOUNT</span>
-                      <span className="font-extrabold text-rose-600 text-sm">-₦{totals.totalDiscount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL NET SALES</span>
-                      <span className="font-extrabold text-blue-700 text-sm">₦{totals.totalNett.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase font-bold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">TOTAL PROFIT</span>
-                      <span className={`font-extrabold text-sm ${totals.totalProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-                        {totals.totalProfit >= 0 ? "+" : ""}₦{totals.totalProfit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-1 border-t border-slate-200 pt-2">
-                    Based on {filteredSalesTransactionsFiltered.length} medicine line items from {new Set(filteredSalesTransactionsFiltered.map((t: any) => t.invoiceNumber)).size} unique invoice(s)
-                    {filterBranchId !== "all" && ` at ${branches.find(b => b.id === filterBranchId)?.name || filterBranchId}`}
-                    {" "} | Period: {dateFrom} to {dateTo}
-                  </div>
-                </div>
-              );
-            })()}
-
+                                  )}
                                 </button>
                               </td>
                             </tr>
@@ -3246,165 +3765,9 @@ export default function ReportingCenterView({
                 <option value="Product Catalog">Product Catalog</option>
                 <option value="Finance Entry">Finance Entry</option>
                 <option value="User Management">User Management</option>
-                </select>
-              </div>
-
-              {/* Branch Constraint */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Target Branch</label>
-                <select
-                  value={filterBranchId}
-                  onChange={(e) => setFilterBranchId(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                >
-                  <option value="all">🌐 All Area Branches (Combined)</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name} ({b.location.split(",")[0]})</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Date From */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date From</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                />
-              </div>
-
-              {/* Date To */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Date To</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                />
-              </div>
+              </select>
             </div>
-
-            {/* Advanced Filters Row - Only for Transaction Details */}
-            {(reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger")) && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 pt-3 border-t border-slate-100">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Cashier</label>
-                  <select
-                    value={filterCashier}
-                    onChange={(e) => setFilterCashier(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Cashiers</option>
-                    {uniqueCashiers.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Medicine</label>
-                  <select
-                    value={filterMedicineName}
-                    onChange={(e) => setFilterMedicineName(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Medicines</option>
-                    {uniqueMedicines.map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Payment Method</label>
-                  <select
-                    value={filterPaymentMethod}
-                    onChange={(e) => setFilterPaymentMethod(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Payment Methods</option>
-                    {uniquePaymentMethods.map(pm => (
-                      <option key={pm} value={pm}>{pm}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Category</label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => setSelectedCategory(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Categories</option>
-                    {uniqueCategories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Supplier / Manufacturer</label>
-                  <select
-                    value={filterSupplier}
-                    onChange={(e) => setFilterSupplier(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Suppliers</option>
-                    {uniqueSuppliers.map(sup => (
-                      <option key={sup} value={sup}>{sup}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">Store / Location</label>
-                  <select
-                    value={filterStore}
-                    onChange={(e) => setFilterStore(e.target.value)}
-                    className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
-                  >
-                    <option value="all">All Stores</option>
-                    {uniqueStores.map(store => (
-                      <option key={store} value={store}>{store}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* Search Bar */}
-            <div className="flex items-center gap-3 pt-2">
-              <div className="relative flex-1">
-                <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="🔍 Search by Invoice #, Medicine Name, Cashier, Category, Supplier..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-              <button
-                onClick={() => {
-                  setFilterBranchId("all");
-                  setFilterCashier("all");
-                  setFilterMedicineName("all");
-                  setFilterPaymentMethod("all");
-                  setFilterSupplier("all");
-                  setFilterStore("all");
-                  setSelectedCategory("all");
-                  setSearchQuery("");
-                  setCurrentPage(1);
-                }}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg transition-colors whitespace-nowrap"
-              >
-                Reset Filters
-              </button>
-            </div>
+          </div>
 
           {/* Streams ledger */}
           <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -3595,78 +3958,33 @@ export default function ReportingCenterView({
 
                 <div className="border border-slate-350 rounded overflow-hidden">
                   
-                  {reportType === "sales" && (subReportProfile === "transaction-details" || subReportProfile === "ledger") && (
-                    <>
-                      <table className="w-full text-left text-[10px]">
-                        <thead className="bg-slate-100 border-b border-slate-350">
-                          <tr className="text-slate-700 font-bold uppercase text-[9px]">
-                            <th className="px-3 py-2">S/N</th>
-                            <th className="px-3 py-2">Invoice #</th>
-                            <th className="px-3 py-2">Medicine Name</th>
-                            <th className="px-3 py-2">Category</th>
-                            <th className="px-3 py-2 text-right">Qty</th>
-                            <th className="px-3 py-2 text-right">Unit Cost</th>
-                            <th className="px-3 py-2 text-right">Tot Cost</th>
-                            <th className="px-3 py-2 text-right">Unit Sell</th>
-                            <th className="px-3 py-2 text-right">Tot Sell</th>
-                            <th className="px-3 py-2 text-right">Discount</th>
-                            <th className="px-3 py-2 text-right">Balance</th>
-                            <th className="px-3 py-2 text-right">Profit</th>
-                            <th className="px-3 py-2">Payment</th>
-                            <th className="px-3 py-2">Cashier</th>
-                            <th className="px-3 py-2">Date & Time</th>
-                            <th className="px-3 py-2">Branch</th>
+                  {reportType === "sales" && (
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="bg-slate-100 border-b border-slate-350">
+                        <tr className="text-slate-700 font-bold uppercase text-[9px]">
+                          <th className="px-4 py-2">Invoice #</th>
+                          <th className="px-4 py-2">Date</th>
+                          <th className="px-4 py-2">Customer</th>
+                          <th className="px-4 py-2 text-right">Items</th>
+                          <th className="px-4 py-2 text-right">Discount</th>
+                          <th className="px-4 py-2 text-right">Grand Total</th>
+                          <th className="px-4 py-2 text-center">Receipt Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {filteredSalesData.map(s => (
+                          <tr key={s.id}>
+                            <td className="px-4 py-2 font-mono font-bold text-slate-800">{s.invoiceNumber}</td>
+                            <td className="px-4 py-2">{s.date.split("T")[0]}</td>
+                            <td className="px-4 py-2 font-medium">{s.customerName}</td>
+                            <td className="px-4 py-2 text-right">{s.items.length}</td>
+                            <td className="px-4 py-2 text-right">-₦{s.discount}</td>
+                            <td className="px-4 py-2 text-right font-bold">₦{s.total.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-center text-slate-500 font-bold">{s.paymentMethod}</td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                          {filteredSalesTransactionsFiltered.map((tx, idx) => {
-                            const branchName = branches.find(b => b.id === tx.branchId)?.name || tx.branchId;
-                            return (
-                              <tr key={idx}>
-                                <td className="px-3 py-2 font-mono text-slate-500">{idx + 1}</td>
-                                <td className="px-3 py-2 font-mono font-bold text-slate-800">{tx.invoiceNumber}</td>
-                                <td className="px-3 py-2 font-semibold text-slate-900">{tx.medicineName}</td>
-                                <td className="px-3 py-2 text-slate-600">{tx.category}</td>
-                                <td className="px-3 py-2 text-right">{tx.quantity}</td>
-                                <td className="px-3 py-2 text-right font-mono">₦{tx.unitCostPrice.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono">₦{tx.totalCostPrice.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono">₦{tx.unitSellingPrice.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono font-bold">₦{tx.totalSellingPrice.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right text-rose-600 font-bold">-₦{tx.discount.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-right font-mono text-emerald-700 font-bold">₦{tx.balanceAfterDiscount.toLocaleString()}</td>
-                                <td className={`px-3 py-2 text-right font-mono font-bold ${tx.profit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{tx.profit >= 0 ? "+" : ""}₦{tx.profit.toLocaleString()}</td>
-                                <td className="px-3 py-2">{tx.paymentMethod}</td>
-                                <td className="px-3 py-2 text-slate-600">{tx.cashierName}</td>
-                                <td className="px-3 py-2 text-slate-500">{new Date(tx.date).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-slate-600">{branchName}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-slate-100 font-bold text-[10px] border-t-2 border-slate-400">
-                            <td colSpan={4} className="px-3 py-2 text-right text-slate-800 uppercase">GRAND TOTALS</td>
-                            <td className="px-3 py-2 text-right">{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.quantity, 0)}</td>
-                            <td className="px-3 py-2 text-right">-</td>
-                            <td className="px-3 py-2 text-right">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalCostPrice, 0).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right">-</td>
-                            <td className="px-3 py-2 text-right">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalSellingPrice, 0).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-rose-600">-₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.discount, 0).toLocaleString()}</td>
-                            <td className="px-3 py-2 text-right text-emerald-700">₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.balanceAfterDiscount, 0).toLocaleString()}</td>
-                            <td className={`px-3 py-2 text-right ${filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0) >= 0 ? "text-emerald-700" : "text-rose-700"}`}>+₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0).toLocaleString()}</td>
-                            <td colSpan={4} className="px-3 py-2"></td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                      <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded text-[10px] space-y-1">
-                        <p><strong>TOTAL QUANTITY SOLD:</strong> {filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.quantity, 0).toLocaleString()} units</p>
-                        <p><strong>TOTAL COST VALUE:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalCostPrice, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                        <p><strong>TOTAL SELL VALUE:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.totalSellingPrice, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                        <p><strong>TOTAL DISCOUNT:</strong> -₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.discount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                        <p><strong>TOTAL NET SALES:</strong> ₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.balanceAfterDiscount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                        <p><strong>TOTAL PROFIT:</strong> +₦{filteredSalesTransactionsFiltered.reduce((s: number, t: any) => s + t.profit, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
-                      </div>
-                    </>
+                        ))}
+                      </tbody>
+                    </table>
                   )}
 
                   {reportType === "inventory" && (
