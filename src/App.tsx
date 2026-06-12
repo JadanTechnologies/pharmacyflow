@@ -39,7 +39,14 @@ export default function App() {
 
   // Core ERP Global States
   const [medicines, setMedicines] = useState<Medicine[]>(INITIAL_MEDICINES);
-  const [branches, setBranches] = useState<Branch[]>(INITIAL_BRANCHES);
+  const [branches, setBranches] = useState<Branch[]>(() => {
+    try {
+      const val = localStorage.getItem("pharmerp_branches");
+      return val ? JSON.parse(val) : INITIAL_BRANCHES;
+    } catch {
+      return INITIAL_BRANCHES;
+    }
+  });
   const [suppliers, setSuppliers] = useState<Supplier[]>(INITIAL_SUPPLIERS);
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>(INITIAL_PRESCRIPTIONS);
@@ -247,6 +254,40 @@ export default function App() {
     setUsers(prev => {
       const next = prev.map(u => u.id === userId ? { ...u, passwordHash: newPass } : u);
       localStorage.setItem("pharmerp_users", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleEditUserBranch = (userId: string, bId: string) => {
+    setUsers(prev => {
+      const next = prev.map(u => u.id === userId ? { ...u, branchId: bId } : u);
+      localStorage.setItem("pharmerp_users", JSON.stringify(next));
+      return next;
+    });
+    // Log reassignment
+    const trgUser = users.find(u => u.id === userId);
+    if (trgUser) {
+      handleAddActivityLog("User Management", `Super Admin reassigned operator terminal: "${trgUser.username}" to branch store: [${bId}].`);
+    }
+  };
+
+  const handleEditUserRole = (userId: string, role: ERPUser["role"]) => {
+    setUsers(prev => {
+      const next = prev.map(u => u.id === userId ? { ...u, role } : u);
+      localStorage.setItem("pharmerp_users", JSON.stringify(next));
+      return next;
+    });
+    // Log role modification
+    const trgUser = users.find(u => u.id === userId);
+    if (trgUser) {
+      handleAddActivityLog("User Management", `Super Admin re-profiled security role clearances for operator: "${trgUser.username}" to [${role}].`);
+    }
+  };
+
+  const handleCreateBranch = (newBranch: Branch) => {
+    setBranches(prev => {
+      const next = [...prev, newBranch];
+      localStorage.setItem("pharmerp_branches", JSON.stringify(next));
       return next;
     });
   };
@@ -538,25 +579,31 @@ export default function App() {
       {/* Persistence Navigation Sidebar */}
       <aside 
         id="navigation-sidebar"
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0F172A] border-r border-slate-800 flex flex-col justify-between transition-transform duration-300 lg:translate-x-0 lg:static lg:h-screen ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-40 bg-[#0F172A] border-r border-slate-800 flex flex-col justify-between transition-all duration-300 ${
+          isSidebarOpen 
+            ? "w-64 translate-x-0" 
+            : "w-20 -translate-x-full lg:translate-x-0"
+        } lg:static lg:h-screen`}
       >
         <div className="flex flex-col flex-1 h-0">
           {/* Brand/SaaS Title logo */}
-          <div className="h-16 flex items-center justify-between px-5 border-b border-slate-800 bg-[#0F172A]">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold relative group">
+          <div className={`h-16 flex items-center ${isSidebarOpen ? "justify-between px-5" : "justify-center"} border-b border-slate-800 bg-[#0F172A]`}>
+            <div className={`flex items-center ${isSidebarOpen ? "space-x-2.5" : "justify-center"}`}>
+              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold relative group shrink-0">
                 <Pill size={16} className="rotate-45" />
               </div>
-              <div>
-                <span className="font-bold text-sm tracking-tight text-white block">PHARMA-ERP</span>
-                <span className="text-[10px] text-slate-400 block font-mono">Nigeria Hub Core</span>
-              </div>
+              {isSidebarOpen && (
+                <div className="animate-fadeIn">
+                  <span className="font-bold text-sm tracking-tight text-white block">PHARMA-ERP</span>
+                  <span className="text-[10px] text-slate-400 block font-mono">Nigeria Hub Core</span>
+                </div>
+              )}
             </div>
-            <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg">
-              <X size={16} />
-            </button>
+            {isSidebarOpen && (
+              <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-1.5 text-slate-400 hover:text-white rounded-lg">
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           {/* Navigation Links list */}
@@ -565,170 +612,180 @@ export default function App() {
             {isAllowed("dashboard") && (
               <button
                 onClick={() => setActiveTab("dashboard")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "dashboard"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "SaaS Dashboard" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <LayoutDashboard size={14} className={activeTab === "dashboard" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  SaaS Dashboard
+                  {isSidebarOpen && <span className="animate-fadeIn">SaaS Dashboard</span>}
                 </span>
-                <ChevronRight size={10} className="opacity-40 group-hover:opacity-100" />
+                {isSidebarOpen && <ChevronRight size={10} className="opacity-40 group-hover:opacity-100" />}
               </button>
             )}
 
             {isAllowed("pos") && (
               <button
                 onClick={() => setActiveTab("pos")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "pos"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "POS Dispenser Register" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <ShoppingCart size={14} className={activeTab === "pos" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  POS Dispenser Register
+                  {isSidebarOpen && <span className="animate-fadeIn">POS Register</span>}
                 </span>
-                <span className="bg-emerald-500/10 text-emerald-300 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/15">POS Live</span>
+                {isSidebarOpen && <span className="bg-emerald-500/10 text-emerald-300 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/15">Live</span>}
               </button>
             )}
 
             {isAllowed("medicines") && (
               <button
                 onClick={() => setActiveTab("medicines")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "medicines"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Medication Catalog" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <Pill size={14} className={activeTab === "medicines" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Medication Catalog
+                  {isSidebarOpen && <span className="animate-fadeIn">Medications</span>}
                 </span>
-                <ChevronRight size={10} className="opacity-40" />
+                {isSidebarOpen && <ChevronRight size={10} className="opacity-40" />}
               </button>
             )}
 
             {isAllowed("inventory") && (
               <button
                 onClick={() => setActiveTab("inventory")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "inventory"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Stock & Transfers Hub" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <Boxes size={14} className={activeTab === "inventory" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Stock & Transfers Hub
+                  {isSidebarOpen && <span className="animate-fadeIn">Stock & Transfers</span>}
                 </span>
-                <ChevronRight size={10} className="opacity-40" />
+                {isSidebarOpen && <ChevronRight size={10} className="opacity-40" />}
               </button>
             )}
 
             {isAllowed("prescription") && (
               <button
                 onClick={() => setActiveTab("prescription")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "prescription"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Clinics Prescriptions OCR" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <FileCheck size={14} className={activeTab === "prescription" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Clinics Prescriptions OCR
+                  {isSidebarOpen && <span className="animate-fadeIn">Prescriptions OCR</span>}
                 </span>
-                <span className="bg-[#115e59]/20 text-[#2dd4bf] border border-[#115e59]/30 py-0.5 px-2 rounded-full font-mono text-[9px]">AI</span>
+                {isSidebarOpen && <span className="bg-[#115e59]/20 text-[#2dd4bf] border border-[#115e59]/30 py-0.5 px-2 rounded-full font-mono text-[9px]">AI</span>}
               </button>
             )}
 
             {isAllowed("ai_voice") && (
               <button
                 onClick={() => setActiveTab("ai_voice")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "ai_voice"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "AI Voice Chatbot" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <Bot size={14} className={activeTab === "ai_voice" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  AI Voice Chatbot
+                  {isSidebarOpen && <span className="animate-fadeIn">Voice Assistant</span>}
                 </span>
-                <span className="bg-emerald-500/10 text-emerald-300 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/15">Active</span>
+                {isSidebarOpen && <span className="bg-emerald-500/10 text-emerald-300 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/15">Active</span>}
               </button>
             )}
 
             {isAllowed("finance") && (
               <button
                 onClick={() => setActiveTab("finance")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "finance"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "SG&A Cost Ledgers" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <BarChart4 size={14} className={activeTab === "finance" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  SG&A Cost Ledgers
+                  {isSidebarOpen && <span className="animate-fadeIn">Costs & Finance</span>}
                 </span>
-                <ChevronRight size={10} className="opacity-40" />
+                {isSidebarOpen && <ChevronRight size={10} className="opacity-40" />}
               </button>
             )}
 
             {isAllowed("reports_admin") && (
               <button
                 onClick={() => setActiveTab("reports_admin")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "reports_admin"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Reporting & Admin Hub" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <FileText size={14} className={activeTab === "reports_admin" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Reporting & Admin Hub
+                  {isSidebarOpen && <span className="animate-fadeIn">Reporting & Admin</span>}
                 </span>
-                <span className="bg-emerald-500/15 text-emerald-400 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/20">Audit</span>
+                {isSidebarOpen && <span className="bg-emerald-500/15 text-emerald-400 py-0.5 px-2 rounded-full font-mono text-[9px] border border-emerald-500/20">Audit</span>}
               </button>
             )}
 
             {isAllowed("crm_patients") && (
               <button
                 onClick={() => setActiveTab("crm_patients")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "crm_patients"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Patient Care CRM" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <Users size={14} className={activeTab === "crm_patients" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Patient Care CRM
+                  {isSidebarOpen && <span className="animate-fadeIn">Patient CRM</span>}
                 </span>
-                <span className="bg-[#10B981]/15 text-[#34D399] py-0.5 px-2 rounded-full font-mono text-[9px] border border-[#10B981]/20">Active</span>
+                {isSidebarOpen && <span className="bg-[#10B981]/15 text-[#34D399] py-0.5 px-2 rounded-full font-mono text-[9px] border border-[#10B981]/20">Active</span>}
               </button>
             )}
 
             {isAllowed("other_modules") && (
               <button
                 onClick={() => setActiveTab("other_modules")}
-                className={`w-full flex items-center justify-between py-2 px-3 rounded-xl text-xs font-semibold transition-all group ${
+                className={`w-full flex items-center ${isSidebarOpen ? "justify-between px-3" : "justify-center py-2.5"} py-2 rounded-xl text-xs font-semibold transition-all group ${
                   activeTab === "other_modules"
                     ? "bg-slate-900 border border-white/5 text-emerald-400 font-bold"
                     : "text-slate-400 hover:text-slate-100 hover:bg-white/[0.02]"
                 }`}
+                title={!isSidebarOpen ? "Enterprise Configs" : ""}
               >
                 <span className="flex items-center gap-2.5">
                   <Settings size={14} className={activeTab === "other_modules" ? "text-emerald-400" : "text-slate-400 group-hover:text-slate-250"} />
-                  Enterprise Configs
+                  {isSidebarOpen && <span className="animate-fadeIn">Configs</span>}
                 </span>
-                <ChevronRight size={10} className="opacity-40" />
+                {isSidebarOpen && <ChevronRight size={10} className="opacity-40" />}
               </button>
             )}
 
@@ -736,24 +793,28 @@ export default function App() {
         </div>
 
         {/* AI Assistant box */}
-        <div className="p-4 border-t border-slate-800">
-          <div className="bg-slate-800/80 rounded-lg p-3">
-            <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">AI Assistant</p>
-            <p className="text-xs text-white leading-relaxed">Demand spike predicted for Anti-Malarials next week.</p>
+        {isSidebarOpen && (
+          <div className="p-4 border-t border-slate-800 animate-fadeIn">
+            <div className="bg-slate-800/80 rounded-lg p-3">
+              <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">AI Assistant</p>
+              <p className="text-xs text-white leading-relaxed">Demand spike predicted for Anti-Malarials next week.</p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* User profile section footer inside card */}
-        <div className="p-4 border-t border-slate-800 bg-[#0F172A]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div id="user-avatar" className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold font-mono text-xs">
+        <div className={`p-4 border-t border-slate-800 bg-[#0F172A] flex flex-col items-center ${isSidebarOpen ? "" : "space-y-3"}`}>
+          <div className={`flex items-center ${isSidebarOpen ? "justify-between w-full" : "flex-col gap-2 justify-center"}`}>
+            <div className={`flex items-center ${isSidebarOpen ? "space-x-2" : "flex-col gap-1 text-center"}`}>
+              <div id="user-avatar" className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold font-mono text-xs shrink-0" title={`${currentUser.username} (${currentUser.role})`}>
                 {currentUser.username.substring(0, 2).toUpperCase()}
               </div>
-              <div className="text-xs">
-                <span className="font-semibold text-white block truncate">{currentUser.username}</span>
-                <span className="text-[10px] text-slate-400 block max-w-[120px] truncate">{currentUser.role}</span>
-              </div>
+              {isSidebarOpen && (
+                <div className="text-xs text-left animate-fadeIn">
+                  <span className="font-semibold text-white block truncate">{currentUser.username}</span>
+                  <span className="text-[10px] text-slate-400 block max-w-[120px] truncate">{currentUser.role}</span>
+                </div>
+              )}
             </div>
             <button 
               onClick={() => handleLogout()}
@@ -765,14 +826,16 @@ export default function App() {
           </div>
           
           {/* Developer credit inside workspace sidebar */}
-          <div className="mt-3 pt-2.5 border-t border-slate-805/40 text-center">
-            <p className="text-[10px] font-semibold text-slate-500 font-sans leading-none tracking-tight">
-              Developed by <span className="text-emerald-400 font-bold block mt-1">Jadan Tech Solutions Nig Ltd</span>
-            </p>
-            <p className="text-[9px] text-[#2dd4bf] font-mono mt-0.5">
-              07061511390
-            </p>
-          </div>
+          {isSidebarOpen && (
+            <div className="mt-3 pt-2.5 border-t border-slate-805/40 text-center w-full animate-fadeIn">
+              <p className="text-[10px] font-semibold text-slate-500 font-sans leading-none tracking-tight">
+                Developed by <span className="text-emerald-400 font-bold block mt-1">Jadan Tech Solutions Nig Ltd</span>
+              </p>
+              <p className="text-[9px] text-[#2dd4bf] font-mono mt-0.5">
+                07061511390
+              </p>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -783,7 +846,11 @@ export default function App() {
         <header className="h-16 border-b border-slate-200 bg-white px-5 flex justify-between items-center shrink-0">
           
           <div className="flex items-center space-x-2">
-            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-1.5 text-slate-500 hover:text-slate-900 rounded-lg">
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+              title={isSidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            >
               <Menu size={18} />
             </button>
             
@@ -989,6 +1056,9 @@ export default function App() {
                   onUpdateRoles={handleUpdateRoles}
                   businessSettings={businessSettings}
                   onUpdateBusinessSettings={handleUpdateBusinessSettings}
+                  onAddBranch={handleCreateBranch}
+                  onEditUserBranch={handleEditUserBranch}
+                  onEditUserRole={handleEditUserRole}
                 />
               )}
             </>

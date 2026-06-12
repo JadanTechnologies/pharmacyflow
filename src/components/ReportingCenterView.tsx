@@ -34,6 +34,10 @@ interface ReportingCenterProps {
   onUpdateRoles: (roles: SecurityRole[]) => void;
   businessSettings: BusinessSettings;
   onUpdateBusinessSettings: (settings: BusinessSettings) => void;
+
+  onAddBranch?: (newBranch: Branch) => void;
+  onEditUserBranch?: (userId: string, branchId: string) => void;
+  onEditUserRole?: (userId: string, role: ERPUser["role"]) => void;
 }
 
 export default function ReportingCenterView({
@@ -56,11 +60,20 @@ export default function ReportingCenterView({
   roles,
   onUpdateRoles,
   businessSettings,
-  onUpdateBusinessSettings
+  onUpdateBusinessSettings,
+  onAddBranch,
+  onEditUserBranch,
+  onEditUserRole
 }: ReportingCenterProps) {
   // Navigation tabs inside Reporting center
   const [activeTab, setActiveTab] = useState<"reports" | "admin" | "ai_forecast" | "barcode_qr" | "whatsapp" | "logs">("reports");
-  const [adminSubTab, setAdminSubTab] = useState<"users" | "roles" | "business" | "saas">("users");
+  const [adminSubTab, setAdminSubTab] = useState<"users" | "roles" | "branches" | "business" | "saas">("users");
+
+  // BRANCH CREATION TEMP STATES
+  const [newBranchName, setNewBranchName] = useState("");
+  const [newBranchLocation, setNewBranchLocation] = useState("");
+  const [newBranchPhone, setNewBranchPhone] = useState("");
+  const [newBranchManager, setNewBranchManager] = useState("");
 
   // REPORT GENERATOR STATES
   const [reportType, setReportType] = useState<"sales" | "inventory" | "finance" | "staff">("sales");
@@ -3338,6 +3351,12 @@ export default function ReportingCenterView({
               👤 Employee Directory
             </button>
             <button 
+              onClick={() => { setAdminSubTab("branches"); setRoleErrorMsg(""); setRoleSuccessMsg(""); }}
+              className={`pb-1.5 transition-all text-left px-1 flex items-center gap-1 border-b-2 cursor-pointer ${adminSubTab === "branches" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-800"}`}
+            >
+              🏪 Branch Outlets
+            </button>
+            <button 
               onClick={() => { setAdminSubTab("roles"); setRoleErrorMsg(""); setRoleSuccessMsg(""); }}
               className={`pb-1.5 transition-all text-left px-1 flex items-center gap-1 border-b-2 cursor-pointer ${adminSubTab === "roles" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-800"}`}
             >
@@ -3472,11 +3491,42 @@ export default function ReportingCenterView({
                               {u.username}
                             </td>
                             <td className="px-4 py-2.5">
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md uppercase">
-                                {u.role}
-                              </span>
+                              {onEditUserRole ? (
+                                <select
+                                  value={u.role}
+                                  onChange={(e) => {
+                                    onEditUserRole(u.id, e.target.value as any);
+                                  }}
+                                  className="p-1 px-1.5 bg-slate-50 border border-slate-200 rounded text-[10.5px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[150px]"
+                                >
+                                  {roles.map(r => (
+                                    <option key={r.name} value={r.name}>{r.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold rounded-md uppercase">
+                                  {u.role}
+                                </span>
+                              )}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-600 font-medium">{branchName}</td>
+                            <td className="px-4 py-2.5 text-slate-600 font-medium">
+                              {onEditUserBranch ? (
+                                <select
+                                  value={u.branchId}
+                                  onChange={(e) => {
+                                    onEditUserBranch(u.id, e.target.value);
+                                  }}
+                                  className="p-1 px-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 max-w-[180px]"
+                                >
+                                  <option value="all">🌐 All Branches</option>
+                                  {branches.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name} ({b.location.split(",")[0]})</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                branchName
+                              )}
+                            </td>
                             <td className="px-4 py-2.5 text-slate-400 font-mono text-[10px]">{u.createdAt}</td>
                             <td className="px-4 py-2.5 font-bold">
                               <button
@@ -3567,6 +3617,208 @@ export default function ReportingCenterView({
                   </table>
                 </div>
 
+              </div>
+
+            </div>
+          )}
+
+          {/* SUBTAB - BRANCHES ADMINISTRATION & ASSIGNMENTS */}
+          {adminSubTab === "branches" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn font-sans text-left">
+              
+              {/* Left Column: Create Branch Store Form */}
+              <div className="lg:col-span-4 bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+                <div className="border-b border-slate-150 pb-2">
+                  <h4 className="text-xs uppercase font-extrabold text-slate-500">
+                    Register New Branch Store
+                  </h4>
+                  <p className="text-[10px] text-slate-450 mt-1">
+                    Expand your operations. Setup a new warehouse, clinical outlet, or retail storefront.
+                  </p>
+                </div>
+
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newBranchName.trim() || !newBranchLocation.trim()) {
+                    alert("Please provide Branch Name and Full Address location details.");
+                    return;
+                  }
+                  if (onAddBranch) {
+                    const newId = `b_${Date.now()}`;
+                    onAddBranch({
+                      id: newId,
+                      name: newBranchName.trim(),
+                      location: newBranchLocation.trim(),
+                      phone: newBranchPhone.trim() || "+234 800 000 0000",
+                      manager: newBranchManager.trim() || "Unassigned",
+                      revenue: 0,
+                      salesCount: 0
+                    });
+                    onAddActivityLog("User Management", `Provisioned and launched new branch: "${newBranchName}" at [${newBranchLocation}].`);
+                    setNewBranchName("");
+                    setNewBranchLocation("");
+                    setNewBranchPhone("");
+                    setNewBranchManager("");
+                    alert(`Successfully provisioned and broadcasted branch storefront: "${newBranchName}"!`);
+                  } else {
+                    alert("Branch creation callback is currently unlinked.");
+                  }
+                }} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Branch Store Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Lekki Phase 1 Outlet"
+                      value={newBranchName}
+                      onChange={(e) => setNewBranchName(e.target.value)}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Full Geographic Address</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Plot 12, Admiralty Way, Lekki, Lagos"
+                      value={newBranchLocation}
+                      onChange={(e) => setNewBranchLocation(e.target.value)}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 font-sans">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Contact Phone</label>
+                      <input
+                        type="text"
+                        placeholder="+234 810 ..."
+                        value={newBranchPhone}
+                        onChange={(e) => setNewBranchPhone(e.target.value)}
+                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Initial Manager</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Umar Farouk"
+                        value={newBranchManager}
+                        onChange={(e) => setNewBranchManager(e.target.value)}
+                        className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-xl text-xs uppercase cursor-pointer transition-all"
+                  >
+                    🚀 Establish Branch Storefront
+                  </button>
+                </form>
+              </div>
+
+              {/* Right Column: Branch Directory & Direct Terminal Assignment Panel */}
+              <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-5">
+                <div className="border-b border-slate-150 pb-2 flex justify-between items-center">
+                  <div>
+                    <h4 className="text-xs uppercase font-extrabold text-slate-500">
+                      Franchise Network Directories
+                    </h4>
+                    <p className="text-[10px] text-slate-450 mt-1">
+                      Manage outlet assets, review localized gross volume, and reassign core cashier/manager terminals.
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-mono font-bold rounded-lg border border-slate-200">
+                    {branches.length} Active Hubs
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-sans">
+                  {branches.map(b => {
+                    const assignedUsers = users.filter(u => u.branchId === b.id);
+                    const unassignedOtherUsers = users.filter(u => u.branchId !== b.id);
+
+                    return (
+                      <div key={b.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 hover:bg-slate-50 transition-all flex flex-col justify-between space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                              <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+                                <Building size={16} />
+                              </div>
+                              <div>
+                                <h5 className="text-xs font-extrabold text-slate-800 leading-none">{b.name}</h5>
+                                <span className="text-[10px] text-slate-400 font-mono">CODE: {b.id.toUpperCase()}</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-mono font-extrabold text-teal-600 bg-teal-50 px-2 py-0.5 rounded border border-teal-100">
+                              ₦{b.revenue.toLocaleString()} Volume
+                            </span>
+                          </div>
+
+                          <div className="text-[11px] space-y-1 text-slate-600">
+                            <p>📍 <span className="font-medium text-slate-700">{b.location}</span></p>
+                            <p>📞 <span className="font-mono text-slate-500">{b.phone}</span></p>
+                            <p>👤 Attending Manager: <span className="font-semibold text-slate-700">{b.manager || "Unassigned"}</span></p>
+                          </div>
+                        </div>
+
+                        {/* Crew details */}
+                        <div className="border-t border-slate-200/80 pt-3 space-y-2.5">
+                          <div>
+                            <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                              Assigned Staff Members ({assignedUsers.length})
+                            </span>
+                            
+                            {assignedUsers.length === 0 ? (
+                              <p className="text-[10px] text-rose-500 italic mt-1 leading-tight">
+                                ⚠️ No digital cashier or manager terminals active at this outlet. Use below to assign one!
+                              </p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {assignedUsers.map(au => (
+                                  <span key={au.id} className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 text-white text-[9px] font-mono font-bold rounded uppercase">
+                                    {au.username} ({au.role.replace("Manager", "Mgr")})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Quick assign select */}
+                          {unassignedOtherUsers.length > 0 && (
+                            <div className="space-y-1 pt-0.5">
+                              <label className="text-[9px] text-slate-500 font-bold block">
+                                Reassign Account to this Branch:
+                              </label>
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (!e.target.value) return;
+                                  if (onEditUserBranch) {
+                                    onEditUserBranch(e.target.value, b.id);
+                                    alert(`Successfully associated user terminal session to [${b.name}]`);
+                                  }
+                                }}
+                                className="w-full text-[10px] bg-white border border-slate-200 py-1 px-2 rounded font-semibold text-slate-700"
+                              >
+                                <option value="">-- Choose manager/cashier to assign --</option>
+                                {unassignedOtherUsers.map(o => (
+                                  <option key={o.id} value={o.id}>
+                                    👤 {o.username} ({o.role} @ {o.branchId === "all" ? "All" : o.branchId})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>
